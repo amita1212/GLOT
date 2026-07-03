@@ -1,17 +1,23 @@
 import os
 import json
+import csv
 import time
 import random
 import argparse
 import string
+import subprocess
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
+from datetime import datetime
 
 import wandb
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import geoopt
+from hyperbolic_layers import HyperbolicGCNConv, hyperbolic_readout
+from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
 
 try:
     from tqdm import tqdm
@@ -205,6 +211,9 @@ class GLOT(nn.Module):
         rho=1.0,
         knn_k=8,
         feature_norm=False,
+        # --- Stage B / C (HyperGLOT) options; defaults preserve original GLOT ---
+        hyperbolic_gnn=False,
+        hyperbolic_readout=False,
     ):
         super().__init__()
 
@@ -220,12 +229,21 @@ class GLOT(nn.Module):
         self.rho = rho
         self.knn_k = knn_k
         self.feature_norm = feature_norm
+        self.hyperbolic_gnn = bool(hyperbolic_gnn)
+        self.hyperbolic_readout = bool(hyperbolic_readout)
+
+        self.ball = None
+        if self.hyperbolic_gnn or self.hyperbolic_readout:
+            self.ball = geoopt.PoincareBall(c=self.curvature)
 
         # Build conv stack
         self.convs = nn.ModuleList()
         last_dim = in_dim
         for _ in range(num_layers):
-            layer = conv(last_dim, hidden_dim, edge_dim=1)
+            if self.hyperbolic_gnn:
+                layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
+            else:
+                layer = conv(last_dim, hidden_dim, edge_dim=1)
             self.convs.append(layer)
             last_dim = hidden_dim
 
@@ -256,7 +274,6 @@ class GLOT(nn.Module):
         # adjacency uses the Stage A builder; cosine+threshold stays original.
         use_hyperbolic_builder = (self.graph_metric == "poincare") or (self.adjacency == "knn")
         if use_hyperbolic_builder:
-            from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
             hyperbolic_config = HyperbolicGraphConfig(
                 graph_metric=self.graph_metric,
                 adjacency=self.adjacency,
@@ -280,11 +297,18 @@ class GLOT(nn.Module):
         edge_weight = getattr(batch, "edge_attr", None)
 
         h_list = [x]
-        h = x
-        for conv in self.convs:
-            h = conv(h, edge_index, edge_attr=edge_weight)
-            h = F.relu(h)
-            h_list.append(h)
+        if self.hyperbolic_gnn:
+            # Stage C: hyperbolic Token-GNN (see hyperbolic_layers.py).
+            h_ball = self.ball.projx(self.ball.expmap0(x))
+            for conv in self.convs:
+                h_ball = conv(h_ball, edge_index, edge_weight)
+                h_list.append(self.ball.logmap0(h_ball))
+        else:
+            h = x
+            for conv in self.convs:
+                h = conv(h, edge_index, edge_attr=edge_weight)
+                h = F.relu(h)
+                h_list.append(h)
 
         if self.jk_mode == "cat":
             h_all = torch.cat(h_list, dim=-1)
@@ -297,7 +321,14 @@ class GLOT(nn.Module):
 
         scores = self.score_layer(h_all).squeeze(-1)
         weights = softmax(scores, batch.batch)
-        pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
+        if self.hyperbolic_readout:
+            # Stage B: Poincare gyro-midpoint readout (see hyperbolic_layers.py).
+            pooled = hyperbolic_readout(
+                h_all, weights, batch.batch, self.ball, self.curvature,
+                num_graphs=int(batch.batch.max().item()) + 1,
+            )
+        else:
+            pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
         
         return pooled
 
@@ -322,7 +353,9 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             curvature=getattr(args, "curvature", 1.0),
             rho=getattr(args, "rho", 1.0),
             knn_k=getattr(args, "knn_k", 8),
-            feature_norm=bool(getattr(args, "feature_norm", 0)))
+            feature_norm=bool(getattr(args, "feature_norm", 0)),
+            hyperbolic_gnn=bool(getattr(args, "hyperbolic_gnn", 0)),
+            hyperbolic_readout=bool(getattr(args, "hyperbolic_readout", 0)))
     else: raise ValueError(f"Unknown pooling method: {name}")
 
 def pool_hidden(pooler, hidden, mask, is_decoder, name):
@@ -396,6 +429,84 @@ def generate_dataset(
 # -------------------------
 # Main Experiment Logic
 # -------------------------
+
+def _arm_name(args) -> str:
+    """Ablation-arm label from the three HyperGLOT switches (A/B/C)."""
+    if getattr(args, "arm", ""):
+        return args.arm
+    a = (getattr(args, "graph_metric", "cosine") == "poincare")
+    b = bool(getattr(args, "hyperbolic_readout", 0))
+    c = bool(getattr(args, "hyperbolic_gnn", 0))
+    if not (a or b or c):
+        return "baseline"
+    if a and b and c:
+        return "ABC"
+    return "".join([n for n, f in (("A", a), ("B", b), ("C", c)) if f])
+
+
+def _append_stress_csv(args, best_acc: float):
+    """Append the negation stress-test result (accuracy) to a CSV."""
+    path = args.results_csv
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    row = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "run_tag": getattr(args, "run_tag", ""),
+        "model": args.model_name_or_path,
+        "task": "stress",
+        "arm": _arm_name(args),
+        "pooling": args.pooling_method,
+        "graph_metric": args.graph_metric,
+        "graph_adj": args.graph_adj,
+        "hyperbolic_gnn": int(getattr(args, "hyperbolic_gnn", 0)),
+        "hyperbolic_readout": int(getattr(args, "hyperbolic_readout", 0)),
+        "distractor_ratio": args.distractor_ratio,
+        "relational_distance": args.relational_distance,
+        "signal_position": args.signal_position,
+        "tau": args.tau,
+        "rho": args.rho,
+        "curvature": args.curvature,
+        "knn_k": args.knn_k,
+        "num_layers": args.num_layers,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "lr": args.lr,
+        "seed": args.seed,
+        "acc": round(float(best_acc), 6),
+    }
+    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+    print(f"[results] appended stress row -> {path}", flush=True)
+
+
+def _git_push_results(path: str, message: str, branch: str = "", remote: str = "origin"):
+    """Stage, commit and push the results CSV. Never raises (git problems must
+    not abort a run)."""
+    try:
+        repo_dir = os.path.dirname(os.path.abspath(path))
+        add = subprocess.run(["git", "add", os.path.abspath(path)],
+                             cwd=repo_dir, capture_output=True, text=True)
+        if add.returncode != 0:
+            print(f"[git] add failed: {add.stderr.strip()}", flush=True)
+            return
+        commit = subprocess.run(["git", "commit", "-m", message],
+                                cwd=repo_dir, capture_output=True, text=True)
+        if commit.returncode != 0:
+            if "nothing to commit" not in (commit.stdout + commit.stderr):
+                print(f"[git] commit failed: {(commit.stdout + commit.stderr).strip()}", flush=True)
+            return
+        push_cmd = ["git", "push", remote] + ([branch] if branch else [])
+        push = subprocess.run(push_cmd, cwd=repo_dir, capture_output=True, text=True)
+        if push.returncode != 0:
+            print(f"[git] push failed: {(push.stdout + push.stderr).strip()}", flush=True)
+        else:
+            print(f"[git] pushed results -> {remote} {branch}".rstrip(), flush=True)
+    except Exception as exc:
+        print(f"[git] skipped ({exc})", flush=True)
+
 
 def run_experiment(backbone: Backbone, args, device):
 
@@ -492,17 +603,47 @@ def run_experiment(backbone: Backbone, args, device):
     print(f"Experiment Finished. Best Validation Accuracy: {best_acc:.4f}")
     print("-" * 60)
 
+    # Persist the stress-test result (accuracy at this distractor ratio) so the
+    # negation "needle in a haystack" sweep from the article is saved to CSV.
+    if getattr(args, "results_csv", ""):
+        _append_stress_csv(args, best_acc)
+        # Push the CSV to GitHub after each run so results survive a crash.
+        if getattr(args, "git_push", 0):
+            _git_push_results(
+                args.results_csv,
+                message=f"stress: {args.model_name_or_path} {_arm_name(args)} d{args.distractor_ratio} seed{args.seed}",
+                branch=getattr(args, "git_branch", ""),
+                remote=getattr(args, "git_remote", "origin"),
+            )
+    print("RESULT_JSON " + json.dumps({
+        "model": args.model_name_or_path, "task": "stress",
+        "arm": _arm_name(args), "graph_metric": args.graph_metric,
+        "graph_adj": args.graph_adj, "hyperbolic_gnn": int(getattr(args, "hyperbolic_gnn", 0)),
+        "hyperbolic_readout": int(getattr(args, "hyperbolic_readout", 0)),
+        "distractor_ratio": args.distractor_ratio, "seed": args.seed,
+        "metrics": {"acc": best_acc},
+    }, default=str), flush=True)
+
 
     INPUT_SENTENCE = eval_data[0]['text']
     all_vectors, all_labels, num_tokens = get_augmented_data(backbone.model_name, INPUT_SENTENCE, device)
     sample_batch = next(iter(val_loader))
     hidden, mask = forward_hidden(backbone, {"input_ids": sample_batch["input_ids"], "attention_mask": sample_batch["attention_mask"]})
     z = pool_hidden(pooler, hidden, mask, backbone.is_decoder, args.pooling_method)
-    dim = z.size(-1)
-    pooled_ours = z[0]
-    all_labels.append("[Token-GNN]")
     print(z.shape)
-    all_vectors = torch.cat([all_vectors.detach().cpu(), z[0].unsqueeze(0).detach().cpu()], dim=0).cpu().numpy()
+    # The pooled GLOT vector only lives in the same space as the raw token
+    # embeddings when its dimension matches (e.g. mean/max pooling). With a
+    # projection head (jk_mode=cat/proj) the pooled dim differs, so appending it
+    # to the token-similarity matrix would crash. Only include it when dims align.
+    if z.size(-1) == all_vectors.size(-1):
+        all_labels.append("[Token-GNN]")
+        all_vectors = torch.cat(
+            [all_vectors.detach().cpu(), z[0].unsqueeze(0).detach().cpu()], dim=0
+        ).cpu().numpy()
+    else:
+        print(f"[stress] pooled dim {z.size(-1)} != token dim {all_vectors.size(-1)}; "
+              f"omitting pooled vector from the similarity figure.")
+        all_vectors = all_vectors.detach().cpu().numpy()
     similarity_matrix = compute_similarity_matrix(all_vectors)
 
     TARGET_NOUNS = ['keys', 'reports', 'files', 'tickets', 'documents', 'alerts']
@@ -585,6 +726,18 @@ def build_argparser():
     p.add_argument("--rho", type=float, default=1.0, help="Hyperbolic-distance threshold for poincare+threshold.")
     p.add_argument("--knn_k", type=int, default=8, help="Neighbours when graph_adj=knn.")
     p.add_argument("--feature_norm", type=int, default=0, help="L2-normalise tokens before mapping into the ball.")
+    # --- Stage B / C (HyperGLOT) options ---
+    p.add_argument("--hyperbolic_gnn", type=int, default=0,
+                   help="Stage C: replace the Euclidean Token-GNN with an HGCN stack.")
+    p.add_argument("--hyperbolic_readout", type=int, default=0,
+                   help="Stage B: replace the Euclidean readout with a Poincare gyro-midpoint.")
+    p.add_argument("--arm", type=str, default="", help="Optional ablation-arm label recorded in results CSV.")
+    p.add_argument("--results_csv", type=str, default="", help="If set, append the stress-test result to this CSV.")
+    p.add_argument("--run_tag", type=str, default="", help="Free-form label recorded in the results CSV.")
+    p.add_argument("--git_push", type=int, default=0,
+                   help="If 1, git add+commit+push the results CSV to GitHub after each run.")
+    p.add_argument("--git_remote", type=str, default="origin", help="Git remote to push results to.")
+    p.add_argument("--git_branch", type=str, default="", help="Git branch to push results to (default: current).")
     
     return p
 

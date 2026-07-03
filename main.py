@@ -1,11 +1,17 @@
 import os
 from datetime import datetime
 import json
+import csv
 import time
 import random
 import argparse
+import subprocess
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict
+import geoopt
+from hyperbolic_layers import HyperbolicGCNConv, hyperbolic_readout
+from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
+
 
 import numpy as np
 import torch
@@ -291,6 +297,9 @@ class GLOT(nn.Module):
         rho=1.0,                  # hyperbolic-distance threshold
         knn_k=8,                  # neighbours if adjacency=="knn"
         feature_norm=False,       # L2-normalise tokens before mapping into the ball
+        # --- Stage B / C (HyperGLOT) options; defaults preserve original GLOT ---
+        hyperbolic_gnn=False,     # Stage C: replace the Euclidean GNN with an HGCN stack
+        hyperbolic_readout=False, # Stage B: replace the Euclidean readout with a gyro-midpoint
     ):
         super().__init__()
 
@@ -307,12 +316,24 @@ class GLOT(nn.Module):
         self.rho = rho
         self.knn_k = knn_k
         self.feature_norm = feature_norm
-        
+        self.hyperbolic_gnn = bool(hyperbolic_gnn)
+        self.hyperbolic_readout = bool(hyperbolic_readout)
+
+        # A single Poincare ball is shared by Stage B (readout) and Stage C (GNN).
+        # It is only instantiated when a hyperbolic component is requested, so the
+        # original GLOT path never imports/creates any hyperbolic objects.
+        self.ball = None
+        if self.hyperbolic_gnn or self.hyperbolic_readout:
+            self.ball = geoopt.PoincareBall(c=self.curvature)
+
         # Build conv stack
         self.convs = nn.ModuleList()
         last_dim = in_dim
         for _ in range(num_layers):
-            if conv == "gat":
+            if self.hyperbolic_gnn:
+                # Stage C: hyperbolic HGCN-style layer (see hyperbolic_layers.py).
+                layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
+            elif conv == "gat":
                 layer = GATConv(last_dim, hidden_dim, edge_dim=1)
             elif conv == "gcn":
                 layer = GCNConv(last_dim, hidden_dim)
@@ -363,7 +384,6 @@ class GLOT(nn.Module):
 
         if use_hyperbolic_builder:
             # Stage A token-graph construction (see hyperbolic_graph.py).
-            from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
             hyperbolic_config = HyperbolicGraphConfig(
                 graph_metric=self.graph_metric,   # "cosine" or "poincare"
                 adjacency=self.adjacency,          # "threshold" or "knn"
@@ -388,19 +408,28 @@ class GLOT(nn.Module):
         edge_weight = getattr(batch, "edge_attr", None)
 
         h_list = [x]
-        h = x
-        # with record_function("gnn"):
-        for conv in self.convs:
-            if isinstance(conv, GATConv):
-                h = conv(h, edge_index, edge_attr=edge_weight)
-            elif isinstance(conv, GCNConv):
-                h = conv(h, edge_index, edge_weight=edge_weight.squeeze())
-            elif isinstance(conv, GINConv):
-                h = conv(h, edge_index)
-            elif isinstance(conv, GINEConv):
-                h = conv(h, edge_index, edge_attr=edge_weight)
-            h = F.relu(h)
-            h_list.append(h)
+        if self.hyperbolic_gnn:
+            # Stage C: hyperbolic Token-GNN. Node features live on the Poincare
+            # ball; we keep a tangent-space copy of each layer's output so the
+            # Jumping-Knowledge concatenation and the scorer are unchanged in dim.
+            h_ball = self.ball.projx(self.ball.expmap0(x))
+            for conv in self.convs:
+                h_ball = conv(h_ball, edge_index, edge_weight)
+                h_list.append(self.ball.logmap0(h_ball))
+        else:
+            # Original GLOT path: Euclidean GNN stack.
+            h = x
+            for conv in self.convs:
+                if isinstance(conv, GATConv):
+                    h = conv(h, edge_index, edge_attr=edge_weight)
+                elif isinstance(conv, GCNConv):
+                    h = conv(h, edge_index, edge_weight=edge_weight.squeeze())
+                elif isinstance(conv, GINConv):
+                    h = conv(h, edge_index)
+                elif isinstance(conv, GINEConv):
+                    h = conv(h, edge_index, edge_attr=edge_weight)
+                h = F.relu(h)
+                h_list.append(h)
 
         if self.jk_mode == "cat":
             h_all = torch.cat(h_list, dim=-1)
@@ -414,7 +443,17 @@ class GLOT(nn.Module):
         # with record_function("readout"):
         scores = self.score_layer(h_all).squeeze(-1)
         weights = softmax(scores, batch.batch)
-        pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
+        if self.hyperbolic_readout:
+            # Stage B: aggregate the refined tokens with a curvature-aware
+            # Einstein / gyro midpoint in the Poincare ball (returns a tangent
+            # vector so the Euclidean classifier/projection head is unchanged).
+            pooled = hyperbolic_readout(
+                h_all, weights, batch.batch, self.ball, self.curvature,
+                num_graphs=int(batch.batch.max().item()) + 1,
+            )
+        else:
+            # Original GLOT readout: Euclidean attention-weighted sum.
+            pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
         # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
         return pooled
 
@@ -662,6 +701,8 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             rho=getattr(args, "rho", 1.0),
             knn_k=getattr(args, "knn_k", 8),
             feature_norm=bool(getattr(args, "feature_norm", 0)),
+            hyperbolic_gnn=bool(getattr(args, "hyperbolic_gnn", 0)),
+            hyperbolic_readout=bool(getattr(args, "hyperbolic_readout", 0)),
         )
     else:
         raise ValueError(f"Unknown pooling method: {name}")
@@ -1127,6 +1168,10 @@ def train_sts_regression(
 
     # MSE on cosine similarity
     best_val = -1.0
+    best_sp = -1.0
+    best_pe = -1.0
+    last_sp = 0.0
+    last_pe = 0.0
     for epoch in range(args.epochs):
         pooler.train()
         proj.train()
@@ -1214,9 +1259,13 @@ def train_sts_regression(
         if args.verbose:
             print(f"[{pooler_name}] epoch {epoch+1} MSE {avg_loss:.4f} Spearman {sp:.4f} Pearson {pe:.4f}", flush=True)
         best_val = max(best_val, (sp + pe) / 2.0)
+        best_sp = max(best_sp, sp)
+        best_pe = max(best_pe, pe)
+        last_sp, last_pe = sp, pe
     
     run.finish()
-    return best_val
+    return {"spearman": best_sp, "pearson": best_pe, "best_val_avg": best_val,
+            "spearman_final": last_sp, "pearson_final": last_pe}
 
 def train_pair_classification(
     backbone: Backbone,
@@ -1306,6 +1355,9 @@ def train_pair_classification(
     optimizer = torch.optim.Adam(params, lr=args.lr, weight_decay=args.weight_decay)
 
     best_acc = 0.0
+    best_f1 = 0.0
+    last_acc = 0.0
+    last_f1 = 0.0
 
     for epoch in range(args.epochs):
         pooler.train()
@@ -1379,7 +1431,12 @@ def train_pair_classification(
         if args.verbose:
             print(f"[{pooler_name}] epoch {epoch+1} loss {avg_loss:.4f} acc {acc:.4f} f1 {f1:.4f}")
         best_acc = max(best_acc, acc)
+        if not np.isnan(f1):
+            best_f1 = max(best_f1, f1)
+        last_acc, last_f1 = acc, f1
     
+    result = {"acc": best_acc, "f1": best_f1, "acc_final": last_acc, "f1_final": last_f1}
+
     if val_ds_mm is not None:
         pooler.eval()
         classifier.eval()
@@ -1413,8 +1470,10 @@ def train_pair_classification(
             "metrics/acc_mm": acc,
             "metrics/f1_mm": f1
         })
+        result["acc_mm"] = acc
+        result["f1_mm"] = f1
 
-    return best_acc
+    return result
 
 def train_single_classification(
     backbone: Backbone,
@@ -1496,6 +1555,9 @@ def train_single_classification(
     # print(f"Total trainable params = {sum([p.numel() for p in params])}")
 
     best_acc = 0.0
+    best_mcc = -1.0
+    last_acc = 0.0
+    last_mcc = 0.0
     for epoch in range(args.epochs):
         if args.finetune_backbone and not args.precompute_hidden_states:
             backbone.model.train()
@@ -1557,7 +1619,9 @@ def train_single_classification(
         if args.verbose:
             print(f"[{pooler_name}] epoch {epoch+1} loss {avg_loss:.4f} acc {acc:.4f} mcc {mcc:.4f}")
         best_acc = max(best_acc, acc)
-    return best_acc
+        best_mcc = max(best_mcc, mcc)
+        last_acc, last_mcc = acc, mcc
+    return {"acc": best_acc, "mcc": best_mcc, "acc_final": last_acc, "mcc_final": last_mcc}
 
 def train_pair_embedding(
     backbone: Backbone,
@@ -1721,11 +1785,142 @@ def evaluate_mteb(
     tasks = mteb.get_tasks(tasks=[args.mteb_task], languages=["eng"])
     results = mteb.evaluate(model, tasks=tasks, encode_kwargs={'batch_size': args.batch_size}, overwrite_strategy="always")
 
+    scores = {}
     for result in results:
         print(f"{result.task_name} | {result.get_score()}")
         wandb.log({f"{result.task_name}": result.get_score()})
+        scores[result.task_name] = float(result.get_score())
 
     run.finish()
+    main_score = float(np.mean(list(scores.values()))) if scores else float("nan")
+    return {"mteb_score": main_score, "mteb_task": args.mteb_task, "mteb_per_task": scores}
+
+# -------------------------
+# Result bookkeeping (ablation arm naming + per-run CSV)
+# -------------------------
+
+def _arm_name(args) -> str:
+    """Derive the ablation-arm label from the three HyperGLOT switches.
+
+    A = hyperbolic graph construction (graph_metric == "poincare")
+    B = hyperbolic readout           (hyperbolic_readout)
+    C = hyperbolic Token-GNN         (hyperbolic_gnn)
+    """
+    if getattr(args, "arm", ""):
+        return args.arm
+    a = (getattr(args, "graph_metric", "cosine") == "poincare")
+    b = bool(getattr(args, "hyperbolic_readout", 0))
+    c = bool(getattr(args, "hyperbolic_gnn", 0))
+    if not (a or b or c):
+        return "baseline"
+    if a and b and c:
+        return "ABC"
+    if a and not b and not c:
+        return "A"
+    if b and not a and not c:
+        return "B"
+    if c and not a and not b:
+        return "C"
+    # any other mixture
+    return "".join([n for n, f in (("A", a), ("B", b), ("C", c)) if f])
+
+
+# Union of every metric key any task can emit, so the CSV schema is stable.
+_RESULT_METRIC_KEYS = [
+    "acc", "acc_final", "mcc", "mcc_final", "f1", "f1_final",
+    "acc_mm", "f1_mm", "spearman", "spearman_final", "pearson", "pearson_final",
+    "best_val_avg", "mteb_score", "best_loss",
+]
+
+
+def append_result_csv(args, metrics: dict, elapsed_sec: float):
+    """Append one fully-specified result row to ``args.results_csv``.
+
+    The row records the complete config (model, task, arm, all graph/geometry
+    hyper-parameters, training hyper-parameters, seed) plus every metric the
+    original GLOT article reports (accuracy, MCC, F1, Spearman/Pearson, MTEB
+    score, matched/mismatched). Writing happens immediately after each run so a
+    crash mid-sweep never loses finished work.
+    """
+    metrics = metrics or {}
+    path = args.results_csv
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
+    row = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "run_tag": getattr(args, "run_tag", ""),
+        "model": args.model_name_or_path,
+        "task": args.task,
+        "mteb_task": args.mteb_task if args.task == "mteb" else "",
+        "arm": _arm_name(args),
+        "pooling": args.pooling_method,
+        "graph_metric": args.graph_metric,
+        "graph_adj": args.graph_adj,
+        "hyperbolic_gnn": int(getattr(args, "hyperbolic_gnn", 0)),
+        "hyperbolic_readout": int(getattr(args, "hyperbolic_readout", 0)),
+        "gnn_type": args.gnn_type,
+        "num_layers": args.num_layers,
+        "jk_mode": args.jk_mode,
+        "tau": args.tau,
+        "rho": args.rho,
+        "curvature": args.curvature,
+        "knn_k": args.knn_k,
+        "feature_norm": int(getattr(args, "feature_norm", 0)),
+        "gat_hidden_dim": args.gat_hidden_dim,
+        "scorer_hidden": args.scorer_hidden,
+        "proj_dim": args.proj_dim,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "lr": args.lr,
+        "weight_decay": args.weight_decay,
+        "max_length": args.max_length,
+        "seed": args.seed,
+        "elapsed_sec": elapsed_sec,
+    }
+    for k in _RESULT_METRIC_KEYS:
+        v = metrics.get(k, "")
+        row[k] = round(v, 6) if isinstance(v, float) else v
+    # Preserve any per-task MTEB breakdown as JSON for completeness.
+    row["mteb_per_task"] = json.dumps(metrics.get("mteb_per_task", {})) if metrics.get("mteb_per_task") else ""
+
+    fieldnames = list(row.keys())
+    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(row)
+    print(f"[results] appended row -> {path}", flush=True)
+
+
+def git_push_results(path: str, message: str, branch: str = "", remote: str = "origin"):
+    """Stage, commit and push the results CSV so every finished run is saved to
+    GitHub immediately. Runs from the CSV's own directory (the repo), never
+    raises -- git problems must not abort a training run.
+    """
+    try:
+        repo_dir = os.path.dirname(os.path.abspath(path))
+        add = subprocess.run(["git", "add", os.path.abspath(path)],
+                             cwd=repo_dir, capture_output=True, text=True)
+        if add.returncode != 0:
+            print(f"[git] add failed: {add.stderr.strip()}", flush=True)
+            return
+        commit = subprocess.run(["git", "commit", "-m", message],
+                                cwd=repo_dir, capture_output=True, text=True)
+        if commit.returncode != 0:
+            # "nothing to commit" is not an error (row may be unchanged).
+            if "nothing to commit" not in (commit.stdout + commit.stderr):
+                print(f"[git] commit failed: {(commit.stdout + commit.stderr).strip()}", flush=True)
+            return
+        push_cmd = ["git", "push", remote] + ([branch] if branch else [])
+        push = subprocess.run(push_cmd, cwd=repo_dir, capture_output=True, text=True)
+        if push.returncode != 0:
+            print(f"[git] push failed: {(push.stdout + push.stderr).strip()}", flush=True)
+        else:
+            print(f"[git] pushed results -> {remote} {branch}".rstrip(), flush=True)
+    except Exception as exc:  # never let bookkeeping abort the run
+        print(f"[git] skipped ({exc})", flush=True)
+
 
 def run_tasks(backbone: Backbone, args, device):
     pooling_name = args.pooling_method
@@ -1741,69 +1936,87 @@ def run_tasks(backbone: Backbone, args, device):
         "lr": args.lr,
         "batch_size": args.batch_size,
     }
+    metrics = {}
 
     if task == "stsb":
         train_ds, val_ds = load_stsb(task)
-        best = train_sts_regression(backbone, pooler, pooling_name, train_ds, val_ds, args, device)
-        summary["metrics"] = {"best_val_avg": best}
+        metrics = train_sts_regression(backbone, pooler, pooling_name, train_ds, val_ds, args, device)
 
     elif task in ["qqp", "mrpc", "rte", "wnli"]: 
         if task == "qqp":
             train_ds, val_ds = load_qqp()
         else:
             train_ds, val_ds = load_stsb(task)
-        best = train_pair_classification(backbone, pooler, pooling_name, num_labels=2, train_ds=train_ds, val_ds=val_ds, args=args, device=device)
-        summary["metrics"] = {"best_acc": best}
+        metrics = train_pair_classification(backbone, pooler, pooling_name, num_labels=2, train_ds=train_ds, val_ds=val_ds, args=args, device=device)
 
     elif task == "mnli":
         train_ds, val_m, val_mm = load_mnli()
         # Train using matched, evaluate on matched and mismatched
-        best_m = train_pair_classification(backbone, pooler, pooling_name, num_labels=3,
+        metrics = train_pair_classification(backbone, pooler, pooling_name, num_labels=3,
                                                     train_ds=train_ds, val_ds=val_m, args=args, device=device, val_ds_mm=val_mm)
-        summary["metrics"] = {"best_acc_matched": best_m}
 
     elif task == "sst2":
         train_ds, val_ds = load_sst2()
         train_ds = train_ds.rename_columns({"sentence": "text"})
         val_ds = val_ds.rename_columns({"sentence": "text"})
-        best = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
+        metrics = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
                                                 train_ds=train_ds, val_ds=val_ds, args=args, device=device)
-        summary["metrics"] = {"best_acc": best}
 
     elif task == "qnli":
         train_ds, val_ds = load_qnli()
-        best = train_pair_classification(backbone, pooler, pooling_name, num_labels=2,
+        metrics = train_pair_classification(backbone, pooler, pooling_name, num_labels=2,
                                                 train_ds=train_ds, val_ds=val_ds, args=args, device=device)
-        summary["metrics"] = {"best_acc": best}
 
     elif task == "cola":
         train_ds, val_ds = load_cola()
         train_ds = train_ds.rename_columns({"sentence": "text"})
         val_ds = val_ds.rename_columns({"sentence": "text"})
-        best = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
+        metrics = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
                                                 train_ds=train_ds, val_ds=val_ds, args=args, device=device)
-        summary["metrics"] = {"best_acc": best}
 
     elif task == "imdb":
         train_ds, test_ds = load_imdb()
-        best = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
+        metrics = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
                                                 train_ds=train_ds, val_ds=test_ds, args=args, device=device)
-        summary["metrics"] = {"best_acc": best}
     
     elif task == "embedding":
         train_ds = load_embedding_dataset(args.train_file, args.num_train_samples)
         best = train_pair_embedding(backbone, pooler, pooling_name, train_ds, args, device)
+        metrics = {"best_loss": best}
     
     elif task == "mteb":
-        evaluate_mteb(backbone, pooler, pooling_name, device, args)
+        metrics = evaluate_mteb(backbone, pooler, pooling_name, device, args)
 
     else:
         summary["skipped"] = f"Unknown or unsupported task: {task}"
     
+    summary["metrics"] = metrics
     summary["elapsed_sec"] = round(time.time() - start, 2)
 
+    # Persist a one-row result record (all article metrics + full config) so the
+    # sweep is resumable and every finished run is saved immediately.
+    if getattr(args, "results_csv", ""):
+        append_result_csv(args, metrics, summary["elapsed_sec"])
+        # Push the CSV to GitHub after each run so results survive a crash and are
+        # available remotely as soon as the run finishes.
+        if getattr(args, "git_push", 0):
+            git_push_results(
+                args.results_csv,
+                message=f"results: {args.model_name_or_path} {task} {_arm_name(args)} seed{args.seed}",
+                branch=getattr(args, "git_branch", ""),
+                remote=getattr(args, "git_remote", "origin"),
+            )
+
     if args.verbose:
-        print(json.dumps(summary, indent=2))
+        print(json.dumps(summary, indent=2, default=str))
+    # Machine-readable one-liner for log scraping by the orchestrator.
+    print("RESULT_JSON " + json.dumps({
+        "model": args.model_name_or_path, "task": task, "arm": _arm_name(args),
+        "graph_metric": args.graph_metric, "graph_adj": args.graph_adj,
+        "hyperbolic_gnn": int(getattr(args, "hyperbolic_gnn", 0)),
+        "hyperbolic_readout": int(getattr(args, "hyperbolic_readout", 0)),
+        "seed": args.seed, "metrics": metrics,
+    }, default=str), flush=True)
 
 def build_argparser():
     p = argparse.ArgumentParser(description="Train & evaluate LM pooling methods (single-file script).")
@@ -1846,6 +2059,20 @@ def build_argparser():
     p.add_argument("--rho", type=float, default=1.0, help="Hyperbolic-distance threshold for poincare+threshold.")
     p.add_argument("--knn_k", type=int, default=8, help="Neighbours when graph_adj=knn.")
     p.add_argument("--feature_norm", type=int, default=0, help="L2-normalise tokens before mapping into the ball.")
+    # --- Stage B / C (HyperGLOT) options ---
+    p.add_argument("--hyperbolic_gnn", type=int, default=0,
+                   help="Stage C: replace the Euclidean Token-GNN with an HGCN stack.")
+    p.add_argument("--hyperbolic_readout", type=int, default=0,
+                   help="Stage B: replace the Euclidean readout with a Poincare gyro-midpoint.")
+    p.add_argument("--arm", type=str, default="",
+                   help="Optional label for the ablation arm (baseline|A|B|C|ABC); recorded in results CSV.")
+    p.add_argument("--results_csv", type=str, default="",
+                   help="If set, append a one-row result record to this CSV after the run.")
+    p.add_argument("--run_tag", type=str, default="", help="Free-form label recorded in the results CSV.")
+    p.add_argument("--git_push", type=int, default=0,
+                   help="If 1, git add+commit+push the results CSV to GitHub after each run.")
+    p.add_argument("--git_remote", type=str, default="origin", help="Git remote to push results to.")
+    p.add_argument("--git_branch", type=str, default="", help="Git branch to push results to (default: current).")
     # Projection head
     p.add_argument("--proj_dim", type=int, default=256, help="If >0, apply linear projection to this dim before cosine.")
     # Labels
