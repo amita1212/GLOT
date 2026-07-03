@@ -199,6 +199,12 @@ class GLOT(nn.Module):
         adjacency="threshold",
         tau=0.3,
         device=None,
+        # --- Stage A (HyperGLOT) options; defaults preserve original GLOT ---
+        graph_metric="cosine",   # {"cosine", "poincare"}
+        curvature=1.0,
+        rho=1.0,
+        knn_k=8,
+        feature_norm=False,
     ):
         super().__init__()
 
@@ -209,6 +215,11 @@ class GLOT(nn.Module):
         self.adjacency = adjacency
         self.tau = tau
         self.device = device
+        self.graph_metric = graph_metric
+        self.curvature = curvature
+        self.rho = rho
+        self.knn_k = knn_k
+        self.feature_norm = feature_norm
 
         # Build conv stack
         self.convs = nn.ModuleList()
@@ -241,10 +252,28 @@ class GLOT(nn.Module):
         device = self.device or hidden.device
         B, L, d = hidden.shape
 
-        batch = build_pyg_graphs(
-            hidden, attention_mask, adjacency=self.adjacency,
-            tau=self.tau, device=device
-        )
+        # Same four-way routing as main.py: any poincare metric OR any knn
+        # adjacency uses the Stage A builder; cosine+threshold stays original.
+        use_hyperbolic_builder = (self.graph_metric == "poincare") or (self.adjacency == "knn")
+        if use_hyperbolic_builder:
+            from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
+            hyperbolic_config = HyperbolicGraphConfig(
+                graph_metric=self.graph_metric,
+                adjacency=self.adjacency,
+                tau=self.tau,
+                rho=self.rho,
+                k=self.knn_k,
+                curvature=self.curvature,
+                feature_norm=self.feature_norm,
+            )
+            batch = build_pyg_graphs_hyper(
+                hidden, attention_mask, hyperbolic_config, device=device
+            )
+        else:
+            batch = build_pyg_graphs(
+                hidden, attention_mask, adjacency=self.adjacency,
+                tau=self.tau, device=device
+            )
 
         batch = batch.to(device)
         x, edge_index = batch.x, batch.edge_index
@@ -287,7 +316,13 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
     elif name == "glot":
         return GLOT(
             in_dim=hidden_size, hidden_dim=args.gat_hidden_dim,
-            num_layers=args.num_layers, jk_mode=args.jk_mode, tau=args.tau)
+            num_layers=args.num_layers, jk_mode=args.jk_mode, tau=args.tau,
+            adjacency=getattr(args, "graph_adj", "threshold"),
+            graph_metric=getattr(args, "graph_metric", "cosine"),
+            curvature=getattr(args, "curvature", 1.0),
+            rho=getattr(args, "rho", 1.0),
+            knn_k=getattr(args, "knn_k", 8),
+            feature_norm=bool(getattr(args, "feature_norm", 0)))
     else: raise ValueError(f"Unknown pooling method: {name}")
 
 def pool_hidden(pooler, hidden, mask, is_decoder, name):
@@ -541,7 +576,15 @@ def build_argparser():
     p.add_argument("--gat_hidden_dim", type=int, default=128, help="Hidden dim for GLOT's GAT layers.")
     p.add_argument("--num_layers", type=int, default=2, help="Number of GAT layers in GLOT.")
     p.add_argument("--jk_mode", type=str, default="cat", choices=["cat", "lstm", "max"])
-    p.add_argument("--tau", type=float, default=0.3, help="k for kNN graphs in GLOT.")
+    p.add_argument("--tau", type=float, default=0.3, help="Cosine threshold for GLOT graph.")
+    # --- Stage A (HyperGLOT) graph-construction options ---
+    p.add_argument("--graph_adj", type=str, default="threshold", choices=["threshold", "knn"])
+    p.add_argument("--graph_metric", type=str, default="cosine", choices=["cosine", "poincare"],
+                   help="Edge metric: cosine (GLOT) or Poincare hyperbolic distance (Stage A).")
+    p.add_argument("--curvature", type=float, default=1.0, help="Poincare ball curvature c.")
+    p.add_argument("--rho", type=float, default=1.0, help="Hyperbolic-distance threshold for poincare+threshold.")
+    p.add_argument("--knn_k", type=int, default=8, help="Neighbours when graph_adj=knn.")
+    p.add_argument("--feature_norm", type=int, default=0, help="L2-normalise tokens before mapping into the ball.")
     
     return p
 

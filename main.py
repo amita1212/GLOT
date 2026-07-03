@@ -285,6 +285,12 @@ class GLOT(nn.Module):
         tau=0.3,
         use_edge_weight=True,
         device=None,
+        # --- Stage A (HyperGLOT) options; defaults preserve original GLOT ---
+        graph_metric="cosine",   # {"cosine", "poincare"}
+        curvature=1.0,            # Poincare ball curvature c (graph_metric=="poincare")
+        rho=1.0,                  # hyperbolic-distance threshold
+        knn_k=8,                  # neighbours if adjacency=="knn"
+        feature_norm=False,       # L2-normalise tokens before mapping into the ball
     ):
         super().__init__()
 
@@ -296,6 +302,11 @@ class GLOT(nn.Module):
         self.tau = tau
         self.use_edge_weight = use_edge_weight
         self.device = device
+        self.graph_metric = graph_metric
+        self.curvature = curvature
+        self.rho = rho
+        self.knn_k = knn_k
+        self.feature_norm = feature_norm
         
         # Build conv stack
         self.convs = nn.ModuleList()
@@ -337,10 +348,40 @@ class GLOT(nn.Module):
         B, L, d = hidden.shape
         # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as prof:
         #     with record_function("graph_construction"):
-        batch = build_pyg_graphs(
-            hidden, attention_mask, adjacency=self.adjacency,
-            tau=self.tau, device=device, 
-        )
+
+        # Choose how token edges are formed:
+        #   "cosine"   -> original GLOT (edge if cosine similarity > tau)
+        #   "poincare" -> Stage A / HyperGLOT (edge if hyperbolic distance < rho)
+        # Choose how token edges are formed. Four configurations are supported:
+        #   cosine   + threshold -> original GLOT (exact)            [else branch]
+        #   cosine   + knn       -> Stage A builder in cosine mode   [hyperbolic builder]
+        #   poincare + threshold -> Stage A hyperbolic (dist < rho)  [hyperbolic builder]
+        #   poincare + knn       -> Stage A hyperbolic kNN           [hyperbolic builder]
+        # The original build_pyg_graphs only implements cosine+threshold, so any
+        # poincare metric OR any knn adjacency routes through the Stage A builder.
+        use_hyperbolic_builder = (self.graph_metric == "poincare") or (self.adjacency == "knn")
+
+        if use_hyperbolic_builder:
+            # Stage A token-graph construction (see hyperbolic_graph.py).
+            from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
+            hyperbolic_config = HyperbolicGraphConfig(
+                graph_metric=self.graph_metric,   # "cosine" or "poincare"
+                adjacency=self.adjacency,          # "threshold" or "knn"
+                tau=self.tau,
+                rho=self.rho,
+                k=self.knn_k,
+                curvature=self.curvature,
+                feature_norm=self.feature_norm,
+            )
+            batch = build_pyg_graphs_hyper(
+                hidden, attention_mask, hyperbolic_config, device=device
+            )
+        else:
+            # Original GLOT path: cosine-similarity threshold graph (exact reproduction).
+            batch = build_pyg_graphs(
+                hidden, attention_mask, adjacency=self.adjacency,
+                tau=self.tau, device=device,
+            )
 
         batch = batch.to(device)
         x, edge_index = batch.x, batch.edge_index
@@ -616,6 +657,11 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             conv=args.gnn_type,
             adjacency=args.graph_adj,
             tau=args.tau,
+            graph_metric=getattr(args, "graph_metric", "cosine"),
+            curvature=getattr(args, "curvature", 1.0),
+            rho=getattr(args, "rho", 1.0),
+            knn_k=getattr(args, "knn_k", 8),
+            feature_norm=bool(getattr(args, "feature_norm", 0)),
         )
     else:
         raise ValueError(f"Unknown pooling method: {name}")
@@ -1791,8 +1837,15 @@ def build_argparser():
     p.add_argument("--gat_hidden_dim", type=int, default=128)
     p.add_argument("--num_layers", type=int, default=2, help="Number of GAT layers (K=0 reduces to adaptive scorer).")
     p.add_argument("--jk_mode", type=str, default="cat", choices=["cat", "lstm", "max"])
-    p.add_argument("--graph_adj", type=str, default="threshold", choices=["threshold"])
+    p.add_argument("--graph_adj", type=str, default="threshold", choices=["threshold", "knn"])
     p.add_argument("--tau", type=float, default=0.3, help="Threshold for adjacency or mid-point for sigmoid.")
+    # --- Stage A (HyperGLOT) graph-construction options ---
+    p.add_argument("--graph_metric", type=str, default="cosine", choices=["cosine", "poincare"],
+                   help="Edge metric: cosine (GLOT) or Poincare hyperbolic distance (Stage A).")
+    p.add_argument("--curvature", type=float, default=1.0, help="Poincare ball curvature c (graph_metric=poincare).")
+    p.add_argument("--rho", type=float, default=1.0, help="Hyperbolic-distance threshold for poincare+threshold.")
+    p.add_argument("--knn_k", type=int, default=8, help="Neighbours when graph_adj=knn.")
+    p.add_argument("--feature_norm", type=int, default=0, help="L2-normalise tokens before mapping into the ball.")
     # Projection head
     p.add_argument("--proj_dim", type=int, default=256, help="If >0, apply linear projection to this dim before cosine.")
     # Labels
