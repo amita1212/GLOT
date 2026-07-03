@@ -778,7 +778,7 @@ class ContrastiveLoss(nn.Module):
 def load_stsb(task):
     # GLUE STS-B 
     # and also task = [mrpc, rte, wnli]
-    ds = load_dataset("glue", task)
+    ds = load_dataset("nyu-mll/glue", task)
     train = ds["train"]
     val = ds["validation"]
     # Map to common fields
@@ -788,36 +788,36 @@ def load_stsb(task):
 
 def load_qqp():
     # ds = load_dataset("glue", "qqp")
-    train = load_dataset("glue", "qqp", split="train[:20000]")
-    val = load_dataset("glue", "qqp", split="validation")
+    train = load_dataset("nyu-mll/glue", "qqp", split="train[:20000]")
+    val = load_dataset("nyu-mll/glue", "qqp", split="validation")
     train = train.rename_columns({"question1": "text_a", "question2": "text_b"})
     val = val.rename_columns({"question1": "text_a", "question2": "text_b"})
     return train, val
 
 def load_qnli():
     # ds = load_dataset("glue", "qnli")
-    train = load_dataset("glue", "qnli", split="train[:20000]")
-    val = load_dataset("glue", "qnli", split="validation")
+    train = load_dataset("nyu-mll/glue", "qnli", split="train[:20000]")
+    val = load_dataset("nyu-mll/glue", "qnli", split="validation")
     train = train.rename_columns({"question": "text_a", "sentence": "text_b"})
     val = val.rename_columns({"question": "text_a", "sentence": "text_b"})
     return train, val
 
 def load_mnli():
     # ds = load_dataset("glue", "mnli")
-    train = load_dataset("glue", "mnli", split="train[:20000]")
-    val_m = load_dataset("glue", "mnli", split="validation_matched")
-    val_mm = load_dataset("glue", "mnli", split="validation_mismatched")
+    train = load_dataset("nyu-mll/glue", "mnli", split="train[:20000]")
+    val_m = load_dataset("nyu-mll/glue", "mnli", split="validation_matched")
+    val_mm = load_dataset("nyu-mll/glue", "mnli", split="validation_mismatched")
     train = train.rename_columns({"premise": "text_a", "hypothesis": "text_b"})
     val_m = val_m.rename_columns({"premise": "text_a", "hypothesis": "text_b"})
     val_mm = val_mm.rename_columns({"premise": "text_a", "hypothesis": "text_b"})
     return train, val_m, val_mm
 
 def load_sst2():
-    ds = load_dataset("glue", "sst2")
+    ds = load_dataset("nyu-mll/glue", "sst2")
     return ds["train"], ds["validation"]
 
 def load_cola():
-    ds = load_dataset("glue", "cola")
+    ds = load_dataset("nyu-mll/glue", "cola")
     return ds["train"], ds["validation"]
 
 def load_imdb():
