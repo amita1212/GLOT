@@ -80,9 +80,11 @@ def build_configs() -> Dict[str, Config]:
         ("A", "poincare", 0, 0),   # Stage A: hyperbolic graph construction
         ("C", "cosine", 1, 0),     # Stage C: hyperbolic Token-GNN
         ("AC", "poincare", 1, 0),  # Stage A + C: hyperbolic graph + hyperbolic GNN
-        # Stage B (hyperbolic readout) dropped for now: the ABC arm consistently
-        # underperformed baseline on CoLA/SST-2/STS-B/MRPC at curvature=1.0.
-        # Re-enable (optionally with a curvature sweep) by uncommenting:
+        ("AB", "poincare", 0, 1),  # Stage A + B: hyperbolic graph + hyperbolic (Einstein) readout
+        # Stage B (hyperbolic readout) previously only tested inside ABC, which
+        # consistently underperformed baseline on CoLA/SST-2/STS-B/MRPC at
+        # curvature=1.0. AB isolates B (no Stage-C GNN) to test whether B alone
+        # helps or is misconfigured. Re-enable the full stack by uncommenting:
         # ("ABC", "poincare", 1, 1), # all three combined
     ]
     for arm, metric, hgnn, hread in arms:
