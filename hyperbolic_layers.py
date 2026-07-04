@@ -40,7 +40,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import add_self_loops
+from torch_geometric.utils import add_self_loops, softmax as pyg_softmax
 
 try:
     from torch_scatter import scatter_add
@@ -94,9 +94,11 @@ def hyperbolic_readout(
     weights: torch.Tensor,
     batch: torch.Tensor,
     ball: geoopt.PoincareBall,
-    curvature: float,
+    curvature,
     num_graphs: Optional[int] = None,
     eps: float = 1e-5,
+    scale: Optional[torch.Tensor] = None,
+    clip: float = 0.0,
 ) -> torch.Tensor:
     """Weighted hyperbolic pooling via the Einstein (Klein) midpoint.
 
@@ -105,8 +107,16 @@ def hyperbolic_readout(
         weights: (N,)  per-token attention weights (GLOT's softmax readout).
         batch:   (N,)  graph id of each token (PyG ``batch`` vector).
         ball:    geoopt ``PoincareBall`` used for the exp/log maps.
-        curvature: ball curvature magnitude ``c`` (must match ``ball``).
+        curvature: ball curvature magnitude ``c`` (float or a 0-dim tensor when
+            the curvature is learnable; must match ``ball``).
         num_graphs: number of graphs in the batch (defaults to ``batch.max()+1``).
+        scale:   optional learnable scalar multiplying the tangent features before
+            the exponential map. Controls how far into the ball tokens are lifted
+            (Khrulkov et al. 2020); ``None`` reproduces the original behaviour.
+        clip:    optional max Euclidean norm for the tangent features before the
+            exp map. Clipping prevents ``expmap0`` from saturating at the ball
+            boundary (the vanishing-gradient failure mode diagnosed by Guo et al.
+            2022). ``0`` disables clipping (original behaviour).
 
     Returns:
         z: (B, D) sentence vectors mapped back to the tangent space so the
@@ -116,10 +126,20 @@ def hyperbolic_readout(
     if num_graphs is None:
         num_graphs = int(batch.max().item()) + 1 if batch.numel() > 0 else 0
 
-    c = float(curvature)
+    # Keep ``c`` as-is so a learnable (tensor) curvature stays differentiable.
+    c = curvature
+
+    # --- Stage B stabilisation (fixes the boundary-saturation failure) --------
+    h = h_all
+    if scale is not None:
+        h = h * scale                              # learnable input scale
+    if clip and clip > 0:
+        norm = h.norm(dim=-1, keepdim=True).clamp_min(eps)
+        factor = torch.clamp(clip / norm, max=1.0)  # ||h|| <= clip
+        h = h * factor
 
     # Lift refined tokens into the Poincare ball, then to the Klein model.
-    p = ball.projx(ball.expmap0(h_all))           # (N, D) on the ball
+    p = ball.projx(ball.expmap0(h))               # (N, D) on the ball
     k = _poincare_to_klein(p, c, eps=eps)          # (N, D) Klein coords
     gamma = _klein_lorentz_factor(k, c, eps=eps)   # (N, 1) Lorentz factors
 
@@ -211,3 +231,59 @@ class HyperbolicGCNConv(MessagePassing):
 
     def message(self, x_j: torch.Tensor, norm: torch.Tensor) -> torch.Tensor:
         return norm.view(-1, 1) * x_j
+
+
+class HyperbolicGATConv(MessagePassing):
+    """Attention-weighted hyperbolic graph conv (hyperbolic GAT).
+
+    Improves on :class:`HyperbolicGCNConv` by replacing the fixed symmetric
+    degree normalisation with **learned attention** over neighbours, mirroring
+    Hyperbolic Attention Networks (Gulcehre et al. 2019) and HGCN's attention
+    aggregation (Chami et al. 2019). This removes the confound whereby the plain
+    hyperbolic-GCN arm silently downgraded GLOT's GAT attention to GCN.
+
+    Node features enter and leave on the Poincare ball. A hyperbolic linear map
+    is applied, features are moved to the tangent space, GAT-style attention
+    weights are computed there and used for aggregation, then the result is
+    mapped back to the ball with a hyperbolic ReLU.
+    """
+
+    def __init__(self, in_dim: int, out_dim: int, ball: geoopt.PoincareBall,
+                 negative_slope: float = 0.2):
+        super().__init__(aggr="add", node_dim=0)
+        self.ball = ball
+        self.lin = HyperbolicLinear(in_dim, out_dim, ball)
+        self.att_src = nn.Parameter(torch.empty(1, out_dim))
+        self.att_dst = nn.Parameter(torch.empty(1, out_dim))
+        nn.init.xavier_uniform_(self.att_src)
+        nn.init.xavier_uniform_(self.att_dst)
+        self.negative_slope = negative_slope
+
+    def forward(self, x_ball: torch.Tensor, edge_index: torch.Tensor,
+                edge_weight: Optional[torch.Tensor] = None) -> torch.Tensor:
+        n = x_ball.size(0)
+
+        # Hyperbolic linear map, then to the tangent space for attention.
+        h = self.lin(x_ball)                    # (n, out_dim) on the ball
+        ht = self.ball.logmap0(h)               # (n, out_dim) tangent
+
+        edge_index, _ = add_self_loops(edge_index, num_nodes=n)
+
+        # GAT-style additive attention logits (source/target projections).
+        alpha_src = (ht * self.att_src).sum(dim=-1)   # (n,)
+        alpha_dst = (ht * self.att_dst).sum(dim=-1)   # (n,)
+
+        agg_t = self.propagate(
+            edge_index, x=ht, alpha=(alpha_src, alpha_dst)
+        )                                        # tangent aggregation
+
+        # Back to the ball with a single exp map, then a hyperbolic ReLU.
+        out = self.ball.projx(self.ball.expmap0(F.relu(agg_t)))
+        return out
+
+    def message(self, x_j: torch.Tensor, alpha_j: torch.Tensor,
+                alpha_i: torch.Tensor, index: torch.Tensor,
+                ptr: Optional[torch.Tensor], size_i: Optional[int]) -> torch.Tensor:
+        alpha = F.leaky_relu(alpha_j + alpha_i, self.negative_slope)
+        alpha = pyg_softmax(alpha, index, ptr, size_i)   # attention over neighbours
+        return x_j * alpha.unsqueeze(-1)

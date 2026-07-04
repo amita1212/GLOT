@@ -69,6 +69,10 @@ class Config:
     graph_adj: str           # threshold | knn
     hyperbolic_gnn: int      # 0 | 1   (Stage C)
     hyperbolic_readout: int  # 0 | 1   (Stage B)
+    hyp_gnn_type: str = "gcn"     # Stage C conv when hyperbolic_gnn: gcn | gat
+    readout_clip: float = 0.0     # Stage B: clip feature norm before exp map (0=off)
+    readout_scale: int = 0        # Stage B: learnable input scale (0/1)
+    learnable_c: int = 0          # learnable Poincare curvature (0/1)
 
 
 def build_configs() -> Dict[str, Config]:
@@ -91,6 +95,21 @@ def build_configs() -> Dict[str, Config]:
         for adj in ("threshold", "knn"):
             name = f"{arm}_{adj}"
             cfgs[name] = Config(name, metric, adj, hgnn, hread)
+
+    # --- Improved hyperbolic arms (fixes from the literature review) ----------
+    # ABfix: Stage A + a *fixed* Stage-B readout that adds a learnable input
+    #   scale, feature clipping (Guo et al. 2022, prevents boundary saturation)
+    #   and learnable curvature -- the diagnosed fix for why plain B hurt.
+    # ACgat: Stage A + an attention-weighted hyperbolic GNN (hyperbolic GAT),
+    #   removing the confound where plain hyperbolic-GCN dropped GLOT's attention.
+    for adj in ("threshold", "knn"):
+        cfgs[f"ABfix_{adj}"] = Config(
+            f"ABfix_{adj}", "poincare", adj, 0, 1,
+            readout_clip=2.0, readout_scale=1, learnable_c=1,
+        )
+        cfgs[f"ACgat_{adj}"] = Config(
+            f"ACgat_{adj}", "poincare", adj, 1, 0, hyp_gnn_type="gat",
+        )
     return cfgs
 
 
@@ -208,6 +227,10 @@ def build_main_cmd(python: str, model: Model, task: str, cfg: Config, seed: int,
         f"--graph_metric={cfg.graph_metric}",
         f"--hyperbolic_gnn={cfg.hyperbolic_gnn}",
         f"--hyperbolic_readout={cfg.hyperbolic_readout}",
+        f"--hyp_gnn_type={cfg.hyp_gnn_type}",
+        f"--readout_clip={cfg.readout_clip}",
+        f"--readout_scale={cfg.readout_scale}",
+        f"--learnable_curvature={cfg.learnable_c}",
         f"--arm={cfg.name}",
         f"--results_csv={results_csv}",
         "--run_tag=hyperglot",

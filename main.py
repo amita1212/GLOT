@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import List, Tuple, Optional, Dict
 import geoopt
-from hyperbolic_layers import HyperbolicGCNConv, hyperbolic_readout
+from hyperbolic_layers import HyperbolicGCNConv, HyperbolicGATConv, hyperbolic_readout
 from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
 
 
@@ -300,6 +300,10 @@ class GLOT(nn.Module):
         # --- Stage B / C (HyperGLOT) options; defaults preserve original GLOT ---
         hyperbolic_gnn=False,     # Stage C: replace the Euclidean GNN with an HGCN stack
         hyperbolic_readout=False, # Stage B: replace the Euclidean readout with a gyro-midpoint
+        hyp_gnn_type="gcn",       # Stage C conv when hyperbolic_gnn: {"gcn", "gat"}
+        readout_clip=0.0,         # Stage B: clip Euclidean feature norm before exp map (0=off)
+        readout_scale=False,      # Stage B: learnable input scale before the exp map
+        learnable_curvature=False,# make the Poincare ball curvature a trainable parameter
     ):
         super().__init__()
 
@@ -318,21 +322,34 @@ class GLOT(nn.Module):
         self.feature_norm = feature_norm
         self.hyperbolic_gnn = bool(hyperbolic_gnn)
         self.hyperbolic_readout = bool(hyperbolic_readout)
+        self.hyp_gnn_type = str(hyp_gnn_type)
+        self.readout_clip = float(readout_clip)
+        self.learnable_curvature = bool(learnable_curvature)
 
         # A single Poincare ball is shared by Stage B (readout) and Stage C (GNN).
         # It is only instantiated when a hyperbolic component is requested, so the
         # original GLOT path never imports/creates any hyperbolic objects.
         self.ball = None
         if self.hyperbolic_gnn or self.hyperbolic_readout:
-            self.ball = geoopt.PoincareBall(c=self.curvature)
+            self.ball = geoopt.PoincareBall(c=self.curvature, learnable=self.learnable_curvature)
+
+        # Optional learnable input scale for the Stage B readout (fixes the
+        # boundary-saturation failure by keeping lifted tokens away from the edge).
+        self.readout_scale = None
+        if self.hyperbolic_readout and bool(readout_scale):
+            self.readout_scale = nn.Parameter(torch.tensor(0.1))
 
         # Build conv stack
         self.convs = nn.ModuleList()
         last_dim = in_dim
         for _ in range(num_layers):
             if self.hyperbolic_gnn:
-                # Stage C: hyperbolic HGCN-style layer (see hyperbolic_layers.py).
-                layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
+                # Stage C: hyperbolic layer (see hyperbolic_layers.py). Either the
+                # original HGCN (degree-normalised) or the attention-weighted GAT.
+                if self.hyp_gnn_type == "gat":
+                    layer = HyperbolicGATConv(last_dim, hidden_dim, self.ball)
+                else:
+                    layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
             elif conv == "gat":
                 layer = GATConv(last_dim, hidden_dim, edge_dim=1)
             elif conv == "gcn":
@@ -447,9 +464,11 @@ class GLOT(nn.Module):
             # Stage B: aggregate the refined tokens with a curvature-aware
             # Einstein / gyro midpoint in the Poincare ball (returns a tangent
             # vector so the Euclidean classifier/projection head is unchanged).
+            readout_c = self.ball.c if self.learnable_curvature else self.curvature
             pooled = hyperbolic_readout(
-                h_all, weights, batch.batch, self.ball, self.curvature,
+                h_all, weights, batch.batch, self.ball, readout_c,
                 num_graphs=int(batch.batch.max().item()) + 1,
+                scale=self.readout_scale, clip=self.readout_clip,
             )
         else:
             # Original GLOT readout: Euclidean attention-weighted sum.
@@ -703,6 +722,10 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             feature_norm=bool(getattr(args, "feature_norm", 0)),
             hyperbolic_gnn=bool(getattr(args, "hyperbolic_gnn", 0)),
             hyperbolic_readout=bool(getattr(args, "hyperbolic_readout", 0)),
+            hyp_gnn_type=getattr(args, "hyp_gnn_type", "gcn"),
+            readout_clip=float(getattr(args, "readout_clip", 0.0)),
+            readout_scale=bool(getattr(args, "readout_scale", 0)),
+            learnable_curvature=bool(getattr(args, "learnable_curvature", 0)),
         )
     else:
         raise ValueError(f"Unknown pooling method: {name}")
@@ -2064,6 +2087,14 @@ def build_argparser():
                    help="Stage C: replace the Euclidean Token-GNN with an HGCN stack.")
     p.add_argument("--hyperbolic_readout", type=int, default=0,
                    help="Stage B: replace the Euclidean readout with a Poincare gyro-midpoint.")
+    p.add_argument("--hyp_gnn_type", type=str, default="gcn", choices=["gcn", "gat"],
+                   help="Stage C hyperbolic conv type when hyperbolic_gnn=1: gcn (HGCN) or gat (attention).")
+    p.add_argument("--readout_clip", type=float, default=0.0,
+                   help="Stage B: clip Euclidean feature norm before the exp map (0=off). Fixes boundary saturation.")
+    p.add_argument("--readout_scale", type=int, default=0,
+                   help="Stage B: use a learnable input scale before the exp map.")
+    p.add_argument("--learnable_curvature", type=int, default=0,
+                   help="Make the Poincare ball curvature c a trainable parameter.")
     p.add_argument("--arm", type=str, default="",
                    help="Optional label for the ablation arm (baseline|A|B|C|ABC); recorded in results CSV.")
     p.add_argument("--results_csv", type=str, default="",
