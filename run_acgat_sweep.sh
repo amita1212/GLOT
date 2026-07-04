@@ -6,10 +6,14 @@
 # hyperglot_all_results.csv. Separate CSV; resumable.
 cd ~/GLOT
 source ~/env.sh
+export WANDB_MODE=disabled
+export WANDB_DIR=~/wandbtmp
+export TMPDIR=~/wandbtmp
+mkdir -p ~/wandbtmp
 python3 run_all_experiments.py \
   --models bert-base-uncased \
   --configs ACgat_threshold ACgat_knn \
-  --tasks sst2 qqp mnli qnli wnli imdb \
+  --tasks sst2 qqp mnli qnli wnli \
   --seeds 42 \
   --results_csv ~/GLOT/results/hyperglot_acgat_sweep.csv \
   >> ~/sweep_acgat.log 2>&1

@@ -73,6 +73,8 @@ class Config:
     readout_clip: float = 0.0     # Stage B: clip feature norm before exp map (0=off)
     readout_scale: int = 0        # Stage B: learnable input scale (0/1)
     learnable_c: int = 0          # learnable Poincare curvature (0/1)
+    gnn_input_clip: float = 0.0   # Stage C: clip token norm before entry exp map (0=off)
+    gnn_input_scale: int = 0      # Stage C: learnable input scale before entry exp map (0/1)
 
 
 def build_configs() -> Dict[str, Config]:
@@ -117,6 +119,17 @@ def build_configs() -> Dict[str, Config]:
         )
         cfgs[f"ACgat_{adj}"] = Config(
             f"ACgat_{adj}", "poincare", adj, 1, 0, hyp_gnn_type="gat",
+        )
+        # ACgatfix: same attention-weighted hyperbolic GNN, but with the Stage-C
+        # entry lift stabilised. Raw BERT token norms (~10-25) saturate expmap0
+        # at the ball boundary (tanh->1), collapsing all tokens onto the edge
+        # before message passing. A learnable input scale + interior clip
+        # (clip=0.7 -> radius ~0.60 at c=1) keeps tokens in the ball interior so
+        # the hyperbolic GNN sees real curvature structure. This tests whether
+        # the flat ACgat result was an input-conditioning artefact.
+        cfgs[f"ACgatfix_{adj}"] = Config(
+            f"ACgatfix_{adj}", "poincare", adj, 1, 0, hyp_gnn_type="gat",
+            gnn_input_clip=0.7, gnn_input_scale=1,
         )
     return cfgs
 
@@ -239,6 +252,8 @@ def build_main_cmd(python: str, model: Model, task: str, cfg: Config, seed: int,
         f"--readout_clip={cfg.readout_clip}",
         f"--readout_scale={cfg.readout_scale}",
         f"--learnable_curvature={cfg.learnable_c}",
+        f"--gnn_input_clip={cfg.gnn_input_clip}",
+        f"--gnn_input_scale={cfg.gnn_input_scale}",
         f"--arm={cfg.name}",
         f"--results_csv={results_csv}",
         "--run_tag=hyperglot",

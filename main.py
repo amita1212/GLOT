@@ -304,6 +304,8 @@ class GLOT(nn.Module):
         readout_clip=0.0,         # Stage B: clip Euclidean feature norm before exp map (0=off)
         readout_scale=False,      # Stage B: learnable input scale before the exp map
         learnable_curvature=False,# make the Poincare ball curvature a trainable parameter
+        gnn_input_clip=0.0,       # Stage C: clip token norm before lifting onto the ball (0=off)
+        gnn_input_scale=False,    # Stage C: learnable input scale before the entry exp map
     ):
         super().__init__()
 
@@ -325,6 +327,7 @@ class GLOT(nn.Module):
         self.hyp_gnn_type = str(hyp_gnn_type)
         self.readout_clip = float(readout_clip)
         self.learnable_curvature = bool(learnable_curvature)
+        self.gnn_input_clip = float(gnn_input_clip)
 
         # A single Poincare ball is shared by Stage B (readout) and Stage C (GNN).
         # It is only instantiated when a hyperbolic component is requested, so the
@@ -338,6 +341,15 @@ class GLOT(nn.Module):
         self.readout_scale = None
         if self.hyperbolic_readout and bool(readout_scale):
             self.readout_scale = nn.Parameter(torch.tensor(0.1))
+
+        # Optional learnable input scale for the Stage C GNN entry. Raw BERT
+        # tokens have norms ~10-25, so expmap0 pushes them onto the ball boundary
+        # (tanh saturates -> vanishing gradients). Scaling/clipping keeps the
+        # lifted tokens in the ball interior so message passing sees real
+        # curvature structure (same fix as Stage B, applied at the GNN input).
+        self.gnn_input_scale = None
+        if self.hyperbolic_gnn and bool(gnn_input_scale):
+            self.gnn_input_scale = nn.Parameter(torch.tensor(0.1))
 
         # Build conv stack
         self.convs = nn.ModuleList()
@@ -429,7 +441,15 @@ class GLOT(nn.Module):
             # Stage C: hyperbolic Token-GNN. Node features live on the Poincare
             # ball; we keep a tangent-space copy of each layer's output so the
             # Jumping-Knowledge concatenation and the scorer are unchanged in dim.
-            h_ball = self.ball.projx(self.ball.expmap0(x))
+            # Stabilise the entry lift so raw BERT norms (~10-25) don't saturate
+            # expmap0 at the ball boundary (mirrors the Stage B readout fix).
+            x_in = x
+            if self.gnn_input_scale is not None:
+                x_in = x_in * self.gnn_input_scale
+            if self.gnn_input_clip and self.gnn_input_clip > 0:
+                norm = x_in.norm(dim=-1, keepdim=True).clamp_min(1e-5)
+                x_in = x_in * torch.clamp(self.gnn_input_clip / norm, max=1.0)
+            h_ball = self.ball.projx(self.ball.expmap0(x_in))
             for conv in self.convs:
                 h_ball = conv(h_ball, edge_index, edge_weight)
                 h_list.append(self.ball.logmap0(h_ball))
@@ -726,6 +746,8 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             readout_clip=float(getattr(args, "readout_clip", 0.0)),
             readout_scale=bool(getattr(args, "readout_scale", 0)),
             learnable_curvature=bool(getattr(args, "learnable_curvature", 0)),
+            gnn_input_clip=float(getattr(args, "gnn_input_clip", 0.0)),
+            gnn_input_scale=bool(getattr(args, "gnn_input_scale", 0)),
         )
     else:
         raise ValueError(f"Unknown pooling method: {name}")
@@ -2095,6 +2117,10 @@ def build_argparser():
                    help="Stage B: use a learnable input scale before the exp map.")
     p.add_argument("--learnable_curvature", type=int, default=0,
                    help="Make the Poincare ball curvature c a trainable parameter.")
+    p.add_argument("--gnn_input_clip", type=float, default=0.0,
+                   help="Stage C: clip token norm before the entry exp map (0=off). Fixes boundary saturation.")
+    p.add_argument("--gnn_input_scale", type=int, default=0,
+                   help="Stage C: use a learnable input scale before the entry exp map.")
     p.add_argument("--arm", type=str, default="",
                    help="Optional label for the ablation arm (baseline|A|B|C|ABC); recorded in results CSV.")
     p.add_argument("--results_csv", type=str, default="",
