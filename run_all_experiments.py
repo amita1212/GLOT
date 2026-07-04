@@ -107,6 +107,14 @@ def build_configs() -> Dict[str, Config]:
             f"ABfix_{adj}", "poincare", adj, 0, 1,
             readout_clip=2.0, readout_scale=1, learnable_c=1,
         )
+        # ABfix2: same as ABfix but with a *properly interior* clip. At c=1,
+        # tanh(sqrt(c)*clip) is the ball radius; clip=2.0 -> 0.964 (still at the
+        # boundary), whereas clip=0.7 -> ~0.60 (well-conditioned interior). This
+        # is the real test of the boundary-saturation fix.
+        cfgs[f"ABfix2_{adj}"] = Config(
+            f"ABfix2_{adj}", "poincare", adj, 0, 1,
+            readout_clip=0.7, readout_scale=1, learnable_c=1,
+        )
         cfgs[f"ACgat_{adj}"] = Config(
             f"ACgat_{adj}", "poincare", adj, 1, 0, hyp_gnn_type="gat",
         )
