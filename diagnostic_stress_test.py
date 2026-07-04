@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import geoopt
-from hyperbolic_layers import HyperbolicGCNConv, hyperbolic_readout
+from hyperbolic_layers import HyperbolicGCNConv, HyperbolicGATConv, hyperbolic_readout
 from hyperbolic_graph import HyperbolicGraphConfig, build_pyg_graphs_hyper
 
 try:
@@ -214,6 +214,12 @@ class GLOT(nn.Module):
         # --- Stage B / C (HyperGLOT) options; defaults preserve original GLOT ---
         hyperbolic_gnn=False,
         hyperbolic_readout=False,
+        hyp_gnn_type="gcn",       # Stage C conv when hyperbolic_gnn: {"gcn", "gat"}
+        readout_clip=0.0,         # Stage B: clip feature norm before exp map (0=off)
+        readout_scale=False,      # Stage B: learnable input scale before the exp map
+        learnable_curvature=False,# trainable Poincare ball curvature
+        gnn_input_clip=0.0,       # Stage C: clip token norm before the entry exp map (0=off)
+        gnn_input_scale=False,    # Stage C: learnable input scale before the entry exp map
     ):
         super().__init__()
 
@@ -231,17 +237,32 @@ class GLOT(nn.Module):
         self.feature_norm = feature_norm
         self.hyperbolic_gnn = bool(hyperbolic_gnn)
         self.hyperbolic_readout = bool(hyperbolic_readout)
+        self.hyp_gnn_type = str(hyp_gnn_type)
+        self.readout_clip = float(readout_clip)
+        self.learnable_curvature = bool(learnable_curvature)
+        self.gnn_input_clip = float(gnn_input_clip)
 
         self.ball = None
         if self.hyperbolic_gnn or self.hyperbolic_readout:
-            self.ball = geoopt.PoincareBall(c=self.curvature)
+            self.ball = geoopt.PoincareBall(c=self.curvature, learnable=self.learnable_curvature)
+
+        # Optional learnable input scales (fix the boundary-saturation failure).
+        self.readout_scale = None
+        if self.hyperbolic_readout and bool(readout_scale):
+            self.readout_scale = nn.Parameter(torch.tensor(0.1))
+        self.gnn_input_scale = None
+        if self.hyperbolic_gnn and bool(gnn_input_scale):
+            self.gnn_input_scale = nn.Parameter(torch.tensor(0.1))
 
         # Build conv stack
         self.convs = nn.ModuleList()
         last_dim = in_dim
         for _ in range(num_layers):
             if self.hyperbolic_gnn:
-                layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
+                if self.hyp_gnn_type == "gat":
+                    layer = HyperbolicGATConv(last_dim, hidden_dim, self.ball)
+                else:
+                    layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
             else:
                 layer = conv(last_dim, hidden_dim, edge_dim=1)
             self.convs.append(layer)
@@ -298,8 +319,16 @@ class GLOT(nn.Module):
 
         h_list = [x]
         if self.hyperbolic_gnn:
-            # Stage C: hyperbolic Token-GNN (see hyperbolic_layers.py).
-            h_ball = self.ball.projx(self.ball.expmap0(x))
+            # Stage C: hyperbolic Token-GNN (see hyperbolic_layers.py). Stabilise
+            # the entry lift so raw token norms don't saturate expmap0 at the
+            # ball boundary (mirrors the Stage B readout fix).
+            x_in = x
+            if self.gnn_input_scale is not None:
+                x_in = x_in * self.gnn_input_scale
+            if self.gnn_input_clip and self.gnn_input_clip > 0:
+                norm = x_in.norm(dim=-1, keepdim=True).clamp_min(1e-5)
+                x_in = x_in * torch.clamp(self.gnn_input_clip / norm, max=1.0)
+            h_ball = self.ball.projx(self.ball.expmap0(x_in))
             for conv in self.convs:
                 h_ball = conv(h_ball, edge_index, edge_weight)
                 h_list.append(self.ball.logmap0(h_ball))
@@ -323,9 +352,11 @@ class GLOT(nn.Module):
         weights = softmax(scores, batch.batch)
         if self.hyperbolic_readout:
             # Stage B: Poincare gyro-midpoint readout (see hyperbolic_layers.py).
+            readout_c = self.ball.c if self.learnable_curvature else self.curvature
             pooled = hyperbolic_readout(
-                h_all, weights, batch.batch, self.ball, self.curvature,
+                h_all, weights, batch.batch, self.ball, readout_c,
                 num_graphs=int(batch.batch.max().item()) + 1,
+                scale=self.readout_scale, clip=self.readout_clip,
             )
         else:
             pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
@@ -355,7 +386,13 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             knn_k=getattr(args, "knn_k", 8),
             feature_norm=bool(getattr(args, "feature_norm", 0)),
             hyperbolic_gnn=bool(getattr(args, "hyperbolic_gnn", 0)),
-            hyperbolic_readout=bool(getattr(args, "hyperbolic_readout", 0)))
+            hyperbolic_readout=bool(getattr(args, "hyperbolic_readout", 0)),
+            hyp_gnn_type=getattr(args, "hyp_gnn_type", "gcn"),
+            readout_clip=float(getattr(args, "readout_clip", 0.0)),
+            readout_scale=bool(getattr(args, "readout_scale", 0)),
+            learnable_curvature=bool(getattr(args, "learnable_curvature", 0)),
+            gnn_input_clip=float(getattr(args, "gnn_input_clip", 0.0)),
+            gnn_input_scale=bool(getattr(args, "gnn_input_scale", 0)))
     else: raise ValueError(f"Unknown pooling method: {name}")
 
 def pool_hidden(pooler, hidden, mask, is_decoder, name):
@@ -731,6 +768,18 @@ def build_argparser():
                    help="Stage C: replace the Euclidean Token-GNN with an HGCN stack.")
     p.add_argument("--hyperbolic_readout", type=int, default=0,
                    help="Stage B: replace the Euclidean readout with a Poincare gyro-midpoint.")
+    p.add_argument("--hyp_gnn_type", type=str, default="gcn", choices=["gcn", "gat"],
+                   help="Stage C hyperbolic conv type when hyperbolic_gnn=1: gcn (HGCN) or gat (attention).")
+    p.add_argument("--readout_clip", type=float, default=0.0,
+                   help="Stage B: clip Euclidean feature norm before the exp map (0=off).")
+    p.add_argument("--readout_scale", type=int, default=0,
+                   help="Stage B: use a learnable input scale before the exp map.")
+    p.add_argument("--learnable_curvature", type=int, default=0,
+                   help="Make the Poincare ball curvature c a trainable parameter.")
+    p.add_argument("--gnn_input_clip", type=float, default=0.0,
+                   help="Stage C: clip token norm before the entry exp map (0=off).")
+    p.add_argument("--gnn_input_scale", type=int, default=0,
+                   help="Stage C: use a learnable input scale before the entry exp map.")
     p.add_argument("--arm", type=str, default="", help="Optional ablation-arm label recorded in results CSV.")
     p.add_argument("--results_csv", type=str, default="", help="If set, append the stress-test result to this CSV.")
     p.add_argument("--run_tag", type=str, default="", help="Free-form label recorded in the results CSV.")
