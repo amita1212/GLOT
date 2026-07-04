@@ -131,6 +131,17 @@ def build_configs() -> Dict[str, Config]:
             f"ACgatfix_{adj}", "poincare", adj, 1, 0, hyp_gnn_type="gat",
             gnn_input_clip=0.7, gnn_input_scale=1,
         )
+        # ABCfix: all three stages combined, each in its *fixed* form -- Stage A
+        # (hyperbolic graph) + fixed Stage B (gyro-midpoint readout with interior
+        # clip 0.7 + learnable scale + learnable curvature) + fixed Stage C
+        # (attention-weighted hyperbolic GAT with interior input clip 0.7 +
+        # learnable input scale). The full hyperbolic pipeline with every
+        # numerical fix applied.
+        cfgs[f"ABCfix_{adj}"] = Config(
+            f"ABCfix_{adj}", "poincare", adj, 1, 1, hyp_gnn_type="gat",
+            readout_clip=0.7, readout_scale=1, learnable_c=1,
+            gnn_input_clip=0.7, gnn_input_scale=1,
+        )
     return cfgs
 
 

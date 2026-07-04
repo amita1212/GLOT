@@ -20,7 +20,7 @@ mkdir -p ~/wandbtmp
 python3 run_all_experiments.py \
   --stress_only \
   --models bert-base-uncased \
-  --configs baseline A_threshold A_knn ACgatfix_threshold ACgatfix_knn ABfix2_threshold ABfix2_knn \
+  --configs baseline A_threshold A_knn ACgatfix_threshold ACgatfix_knn ABfix2_threshold ABfix2_knn ABCfix_threshold ABCfix_knn \
   --seeds 42 \
   --stress_csv ~/GLOT/results/hyperglot_stress_results.csv \
   >> ~/stress_sweep.log 2>&1
