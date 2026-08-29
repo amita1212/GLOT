@@ -42,10 +42,9 @@ search budget over fifteen shared seeds.
 \textbf{The three parts disagree, and that is the main result.} The hyperbolic
 readout is reliably harmful, on an encoder and again on a decoder, and we can
 say why: it amplifies seed variance rather than acting as a useful prior.
-Hyperbolic message passing is the only part that ever helps. The hyperbolic
-graph does nothing anywhere. Reported as a single ``hyperbolic'' switch these
-would have averaged to about zero; the stage-wise design is what makes them
-visible.
+Hyperbolic message passing is the only part that ever reaches significance, and
+it helps. The hyperbolic graph is nominally positive more often than not, but
+never separates from the baseline.
 
 \textbf{We are careful about the one gain.} It is significant end to end, but a
 factorial that separates curvature from the graph density and architecture it
@@ -86,8 +85,9 @@ reported their average and found nothing.
 \item \textbf{A stage-wise hyperbolic study} (\S\ref{sec:results}). Under an
       equal search budget with 15 shared seeds, the hyperbolic readout (B) is
       significantly harmful on an encoder and on a decoder; hyperbolic message
-      passing (C) is the only part that ever helps; the hyperbolic graph (A) is
-      flat everywhere. We report what each part does, not what they do on
+      passing (C) is the only part that reaches significance in the positive
+      direction; the hyperbolic graph (A) trends positive but never separates
+      from its controls. We report what each part does, not what they do on
       average.
 \item \textbf{The usual motivation does not survive measurement}
       (\S\ref{sec:results}). Low $\delta$-hyperbolicity is driven by a handful
@@ -290,11 +290,20 @@ That matters here because it sets the bar every geometric claim must clear:
 Stage C clears it on STS-B and not on CoLA, and Stage B is significantly
 \emph{below} it.
 
-\paragraph{The graph is flat, and so is the choice of GNN.} Stage A moves
-nothing anywhere: $+0.70$ on CoLA, $+0.03$ on STS-B, $+0.04$ on MRPC, $+0.04$
-on the decoder, none significant. Swapping GAT for GCN or GIN moves CoLA by at
-most $0.52$ MCC and STS-B by $0.23$, inside seed noise. Neither the geometry of
-the graph nor the architecture that reads it is where the variation lives.
+\paragraph{The graph trends positive but never separates.} Stage A is nominally
+ahead of the baseline in five of the seven settings we ran it in: $+0.70$ on
+CoLA, $+0.03$ on STS-B, $+0.04$ on MRPC, $+0.02$ on RTE and $+0.04$ on the
+decoder, against $-0.23$ and $-0.09$ on RoBERTa. It is also nominally ahead in
+the noise diagnostic at three of four distractor ratios
+(Appendix~\ref{app:stress}). But it reaches significance in none of them --- the
+strongest is CoLA at $p = 0.118$ --- and a sign test across the seven settings
+gives $p = 0.45$. The direction is suggestive; the evidence is not there. We
+report A as unresolved rather than as a positive or a null, and note that a
+larger seed budget on CoLA is the cheapest way to settle it.
+
+Swapping GAT for GCN or GIN moves CoLA by at most $0.52$ MCC and STS-B by
+$0.23$, inside seed noise. So neither the geometry of the graph nor the
+architecture that reads it is where the measurable variation lives.
 
 \paragraph{The components cancel.} B and C carry opposite signs. A study that
 turned ``hyperbolic'' on as one switch would have reported their average, which
@@ -352,7 +361,8 @@ setting we ran, $0$ or $1$ of $15$ seeds positive on STS-B, surviving Bonferroni
 on an encoder and repeating on a decoder, with a variance signature that
 suggests why. M\"obius message passing is the one part that ever helps, by
 $+1.42$ MCC on CoLA, but it does not reach MRPC and the comparison is not yet
-clean. The Poincar\'e graph does nothing at all.
+clean. The Poincar\'e graph trends positive in most settings and reaches
+significance in none, so we leave it open.
 
 Two lessons travel beyond this architecture. The standard reason to go
 hyperbolic --- a low measured $\delta$ --- is an artifact of norm outliers, and
