@@ -251,9 +251,20 @@ where no arm beats the baseline and every hyperbolic arm is slightly negative
 graph or the same network as the baseline: it chose a threshold of $q = 0.38$
 against the baseline's $0.10$, a $3.6\times$ denser graph, together with half
 the depth and half the width. The $+1.42$ therefore mixes geometry with those
-choices, and it does not separate from a control that removes the graph
-entirely. We are running the matched comparison that isolates the geometry
+choices. It also fails the sharpest control we have: an arm that deletes every
+edge scores $46.20$ on CoLA, and C does not separate from it ($+0.58$, $8/7$,
+$p = 1.00$). We are running the matched comparison that isolates the geometry
 (Appendix~\ref{app:limitations}).
+
+\paragraph{On these tasks the edges are doing less than expected.} The
+graph-free arm is not worse than the baseline on any of the three tasks (CoLA
+$4/11$, STS-B $8/7$, MRPC $6/9$), and on CoLA it ranks second of eight. It is
+still a trained pooler, so this is not a claim that \textsc{Glot}'s design is
+unnecessary --- against real bag-of-tokens poolers the graph wins by $14$--$35$
+points on the authors' noise test. The narrower claim is that on GLUE, at $40$
+trials per arm, accuracy does not come from the edges. That matters here
+because it sets the bar every geometric claim must clear: Stage C clears it on
+STS-B and not on CoLA, and Stage B is significantly \emph{below} it.
 
 \paragraph{The graph is flat, and so is the choice of GNN.} Stage A moves
 nothing anywhere: $+0.70$ on CoLA, $+0.03$ on STS-B, $+0.04$ on MRPC, $+0.04$
@@ -557,12 +568,24 @@ $t=-6.36$, $p=0.00098$; AB $-0.747$, $t=-5.66$, $p=6\times10^{-5}$. All four
 survive Bonferroni. On CoLA, C gives $\bar{d}=+1.416$, $t=4.11$, sign
 $p=0.0074$ --- significant on both tests but above $\alpha=0.0063$.
 
-\paragraph{The graph-free control.} We also ran an arm that suppresses the graph
-entirely ($\tau = 0.999$). Stage B is significantly better than it on CoLA
-($-2.10$ and $-2.07$ MCC for the control, $3/12$, $p=0.035$), so B does use the
-graph even while hurting relative to the flat baseline. Stage C is not
-distinguishable from it ($+0.58$, $8/7$, $p = 1.00$), which is the second reason
-we do not present C as established.
+\paragraph{The graph-free control.} We also ran an arm that deletes every edge
+($\tau = 0.999$) while keeping the projection, the readout and the same $40$
+tuning trials. It is statistically indistinguishable from the flat baseline on
+all three tasks (CoLA $4/11$, $p=0.12$; STS-B $8/7$, $p=1.00$; MRPC $6/9$,
+$p=0.61$), and on CoLA it is numerically second of eight arms at $46.20$,
+\emph{above} the baseline's $45.37$. At this budget the edges contribute little
+to GLUE accuracy, so any claim about the graph's \emph{geometry} has to clear
+this bar first. Stage C does not on CoLA ($+0.58$, $8/7$, $p=1.00$), though it
+does on STS-B ($+0.16$, $12/3$, $p=0.035$); this is the second reason we do not
+present C as established. Stage B is significantly \emph{worse} than deleting
+the graph on CoLA ($-2.10$, $3/12$, $p=0.035$), which is the sharpest available
+statement of its harm.
+
+This does not contradict \textsc{Glot}'s own motivating result. The control here
+still trains a pooler; it is not a bag of tokens. Against genuine bag-of-tokens
+baselines the graph earns its place decisively (Appendix~\ref{app:stress}).
+What the control shows is narrower: on these three GLUE tasks, at $40$ trials
+per arm, the \emph{edges} are not where the accuracy comes from.
 
 \section{Porting to other backbones}
 \label{app:calib}
@@ -835,10 +858,16 @@ did not run.
       a $3.6\times$ denser graph than the baseline ($q = 0.38$ against $0.10$),
       half the depth and half the width, so $+1.42$ MCC mixes curvature with
       those choices. It also does not separate from the graph-free control
-      ($+0.58$, $8/7$). We are running the $2\times2$ that holds graph and
-      architecture fixed and toggles only the message passing; until it lands, C
-      is a direction, not a result. The gain does not reach MRPC and was never
-      run on the decoder.
+      ($+0.58$, $8/7$, $p=1.00$). We are running the $2\times2$ that holds graph
+      and architecture fixed and toggles only the message passing; until it
+      lands, C is a direction, not a result. The gain does not reach MRPC and
+      was never run on the decoder.
+\item \textbf{We cannot say why the edges contribute so little on GLUE.} The
+      graph-free arm matches the baseline on all three tasks, yet the graph is
+      decisive on the noise diagnostic. Reconciling those two observations ---
+      most likely by identifying which inputs actually need relational pooling
+      --- would say more about \textsc{Glot} than anything in this paper. We did
+      not attempt it.
 \item \textbf{We select the epoch on the split we report}, because GLUE test
       labels are not public. This is a smaller version of the practice we
       criticise in \S\ref{sec:choices}. Splitting the development set into
