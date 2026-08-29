@@ -184,17 +184,17 @@ and architecture unchanged and removing only the relational information.
 
 \begin{figure}[t]
 \begin{center}
-\fbox{\begin{minipage}[c][0.27\textheight][c]{0.92\textwidth}
-\centering \textcolor{gray}{[ figure placeholder --- see caption ]}
-\end{minipage}}
+\includegraphics[width=\textwidth]{glot}
 \end{center}
-\caption{\textsc{Glot}'s pooling pipeline and the three modifications we test.
-Token states from a frozen backbone are thresholded into a graph
-(Eq.~\ref{eq:adj}), refined by a GNN, and aggregated by a learned readout.
-Stage A changes the graph construction, Stage B the readout, Stage C the
-message passing; the \texttt{no\_graph} control removes the edges while leaving
-every parameter in place. The lower panel shows the calibration failure: a
-fixed $\tau$ produces very different densities on different backbones.}
+\caption{\textsc{Glot}'s pooling pipeline, reproduced from
+\citet{mantri2026glot}. Token states $x_1,\dots,x_L$ from a frozen backbone are
+thresholded into a latent token graph (Eq.~\ref{eq:adj}), refined by a
+token-level GNN, and aggregated into a single sentence vector $\mathbf{z}$ by a
+learned readout; only the shaded block trains. Each of our three modifications
+replaces exactly one depicted component --- Stage A the graph construction,
+Stage B the readout, Stage C the token-GNN --- and we vary them independently
+rather than as a bundle. The \texttt{no\_graph} control deletes the edges of
+the depicted graph while leaving every parameter in place.}
 \label{fig:overview}
 \end{figure}
 
