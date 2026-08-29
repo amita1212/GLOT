@@ -16,8 +16,8 @@
 
 \newcommand{\PEND}{\textcolor{gray}{--}}
 
-\title{Hyperbolic Extensions of \textsc{Glot}:\\
-A Stage-wise Study of Graph-Based Sentence Pooling}
+\title{Does Hyperbolic Geometry Help Graph-Based\\
+Sentence Pooling? A Controlled Stage-wise Study}
 
 \author{Anonymous authors\\
 Paper under double-blind review}
@@ -27,40 +27,40 @@ Paper under double-blind review}
 \maketitle
 
 \begin{abstract}
-Graph-based pooling builds a latent token graph over a frozen language model and
-refines token states with a GNN before aggregation. \textsc{Glot}
-\citep{mantri2026glot} is a strong recent instance, matching much larger
-poolers with $20\times$ fewer trainable parameters while keeping the backbone
-frozen. We ask whether hyperbolic geometry, which embeds hierarchical structure
-more efficiently than Euclidean space, can extend it, and we study three stages
-independently: a Poincar\'e token graph (\textbf{A}), a gyro-midpoint readout
-(\textbf{B}), and M\"obius message passing (\textbf{C}). Across $990$ runs with
-$15$ paired seeds and an equal search budget per stage over \textsc{Glot}'s own
-grid, \textbf{Stage C is the strongest of the three}: $+1.42$ MCC on CoLA with
-$13/15$ seeds positive, significant on both a paired $t$-test and an exact sign
-test, and A${+}$C is the best arm on STS-B. The gain is task-dependent rather
-than uniform --- on MRPC Stage C is slightly negative ($-0.32$ F1, $4/15$ seeds
-positive, not significant), and on CoLA it is not separable from a control that
-deletes the graph entirely --- so we report it as the most promising direction
-of the three rather than as an established improvement.
-\textbf{Stage B is significantly harmful} on both an encoder and a decoder
-backbone, surviving Bonferroni. ``Hyperbolic
-pooling'' should therefore not be treated as one design choice: its readout and
-its message passing move in opposite directions, and conflating them hides both.
+Hyperbolic space embeds hierarchies with far less distortion than Euclidean
+space, and token states are often argued to be approximately hierarchical. That
+reasoning has motivated hyperbolic variants of many architectures. We test it
+carefully on one: \textsc{Glot} \citep{mantri2026glot}, a graph-based sentence
+pooler that builds a latent token graph over a frozen backbone, refines it with
+a GNN, and aggregates with a learned readout.
 
-Two findings about \textsc{Glot} itself follow from the same experiments, and
-both are in its favour. It is \emph{better than its own paper reports}: at the
-authors' seed and over their published grid we exceed the reported CoLA by
-$3.03$ MCC and RTE by $0.36$, because the published numbers are single-seed
-maxima over a search rather than means over seeds. And it is markedly
-\emph{robust to how its token graph is built}: realised edge density ranges from
-$0.10$ on BERT to $0.99$ on RoBERTa under the identical threshold, yet accuracy
-is unchanged, and \textsc{Glot} beats mean, max and \texttt{[CLS]} pooling by
-$14$--$35$ points in every seed of the authors' noise diagnostic. That
-robustness is practically convenient --- the method ports to a new backbone
-without re-tuning the graph --- and it also indicates that the gain is carried
-by the trained readout rather than by the particular graph, which is where we
-would direct further work on this family.
+\textsc{Glot} has exactly three places where geometry enters, so we build a
+hyperbolic counterpart of each and measure them \emph{separately} rather than
+as a bundle: a Poincar\'e geodesic token graph (\textbf{A}), an Einstein
+gyro-midpoint readout (\textbf{B}), and M\"obius message passing (\textbf{C}).
+All eight combinations run under an equal search budget over the original
+model's own hyper-parameter grid, with 15 paired seeds, on three GLUE tasks, a
+decoder backbone, and a noise-robustness diagnostic.
+
+The answer is \emph{partly, and only in one component}. Hyperbolic message
+passing (C) is the one positive: $+1.42$ MCC on CoLA with $13/15$ seeds,
+significant on a paired $t$-test and an exact sign test, and A${+}$C is the
+best arm on STS-B. The gain does not generalise --- C is slightly negative on
+MRPC, and on CoLA it is not separable from a control that deletes the graph
+entirely. The gyro-midpoint readout (B) is \emph{reliably harmful}: $0$--$1$ of
+$15$ seeds positive on STS-B, surviving Bonferroni, and reproducing on a
+decoder backbone where it costs $3.6$ Spearman. The hyperbolic graph (A) is
+flat everywhere. Because B and C carry opposite signs and similar magnitudes,
+a study reporting ``hyperbolic pooling'' as a single switch would have averaged
+them to approximately nothing.
+
+We also question the premise. The usual justification --- low measured
+$\delta$-hyperbolicity of token activations --- is an artifact of norm
+outliers: on the outlier-invariant angular metric ModernBERT's $\delta$ is
+$0.2127$ against BERT's $0.2114$, statistically indistinguishable, while the
+Euclidean estimate differs by two orders of magnitude. Measured tree-likeness
+is a poor guide to whether hyperbolic layers will help, which is consistent
+with what we observe.
 \end{abstract}
 
 %-------------------------------------------------------------------------
@@ -111,7 +111,7 @@ reported their average and concluded nothing.
       the measurements a practitioner needs to avoid them.
 \end{enumerate}
 %-------------------------------------------------------------------------
-\section{Method and variants}
+\section{Three hyperbolic constructions}
 \label{sec:method}
 
 Let $H = (x_1,\dots,x_L)$ be the token states of a frozen backbone.
@@ -122,16 +122,65 @@ A_{ij} = \mathbf{1}\!\left[\, \cos(x_i, x_j) > \tau \,\right],
 \end{equation}
 applies $K$ graph-attention layers with jumping-knowledge concatenation, and
 aggregates the refined states with a learned readout. Only the pooler trains.
+Geometry enters in exactly three places --- how the graph is formed, how
+messages are combined, and how the refined states are aggregated --- so we
+build a hyperbolic counterpart of each and vary them independently.
 
-We evaluate three orthogonal modifications and all their combinations
-(Figure~\ref{fig:overview}). \textbf{Stage A} replaces Eq.~\ref{eq:adj} with a
-threshold on \emph{geodesic} distance in the Poincar\'e ball after
-$\exp^c_0(\cdot)$. \textbf{Stage B} replaces the readout with a
-Fr\'echet-style mean in the ball. \textbf{Stage C} performs message passing
-with M\"obius operations. We additionally run a \texttt{no\_graph} control,
-implemented by raising $\tau$ until essentially no edge survives, so that
-parameter count and architecture are unchanged and only the relational
-information is removed.
+\paragraph{Preliminaries.} We work in the Poincar\'e ball
+$\mathbb{B}^d_c = \{x \in \mathbb{R}^d : c\|x\|^2 < 1\}$ of curvature $-c$,
+with M\"obius addition $\oplus_c$, and the maps
+\begin{equation}
+\exp^c_0(v) = \tanh\!\big(\sqrt{c}\,\|v\|\big)\frac{v}{\sqrt{c}\,\|v\|},
+\qquad
+\log^c_0(x) = \operatorname{artanh}\!\big(\sqrt{c}\,\|x\|\big)\frac{x}{\sqrt{c}\,\|x\|},
+\end{equation}
+and geodesic distance
+$d_c(x,y) = \tfrac{2}{\sqrt{c}}\operatorname{artanh}\big(\sqrt{c}\,\|{-}x \oplus_c y\|\big)$.
+
+\paragraph{Curvature is searched in a scale-free parameterisation.} Curvature
+and feature scale are not separately identifiable here: $d_c$ depends on
+$\sqrt{c}\,\|x\|$, so doubling the features and quartering $c$ leaves every
+distance unchanged. Searching $c$ directly therefore wastes most of the grid.
+We instead condition features to unit mean norm and search the
+\emph{effective radius} $r_{\text{eff}} = \sqrt{c}\,\mathbb{E}\|x\|$, which
+with unit features gives $c = r_{\text{eff}}^2$; we sweep
+$r_{\text{eff}} \in \{0.5, 1, 1.5, 2, 3\}$, spanning the near-Euclidean regime
+to strong curvature. This matters: with raw BERT token norms ($\approx 14.7$),
+$\exp^c_0$ saturates to radius $1.0$ in \texttt{float32} and every absolute
+distance threshold yields an empty graph (Appendix~\ref{app:defects}).
+
+\paragraph{Stage A: Poincar\'e geodesic graph.} Replace Eq.~\ref{eq:adj} with
+$A_{ij} = \mathbf{1}[\,d_c(\exp^c_0(\tilde{x}_i), \exp^c_0(\tilde{x}_j)) < \rho_q\,]$,
+where $\tilde{x}$ is the conditioned feature and $\rho_q$ is the $q$-quantile
+of off-diagonal pairwise distances. Using a quantile rather than an absolute
+radius makes realised density $q$ by construction, so Stage A and the cosine
+baseline can be compared at \emph{matched sparsity} and the contrast is about
+geometry rather than about how many edges survive.
+
+\paragraph{Stage B: Einstein gyro-midpoint readout.} Replace the readout's
+weighted Euclidean sum with the Einstein midpoint, computed in Klein
+coordinates $k = 2x/(1 + c\|x\|^2)$ with Lorentz factors
+$\gamma_k = (1 - c\|k\|^2)^{-1/2}$:
+\begin{equation}
+m_K = \frac{\sum_i a_i \gamma_{k_i} k_i}{\sum_i a_i \gamma_{k_i}},
+\label{eq:midpoint}
+\end{equation}
+for attention weights $a_i$, mapped back to the ball and then to the tangent
+space for the task head. Unlike a Euclidean mean this is genuinely
+curvature-dependent: as $c \rightarrow 0$ it recovers the arithmetic mean.
+
+\paragraph{Stage C: M\"obius message passing.} Replace each GNN layer with a
+hyperbolic one that lifts to the tangent space to aggregate:
+\begin{equation}
+h_i' = \exp^c_0\!\Big(\sigma\Big(\textstyle\sum_{j \in \mathcal{N}(i)}
+       \alpha_{ij}\, \log^c_0\big(W \otimes_c h_j\big)\Big)\Big),
+\end{equation}
+with $W \otimes_c h = \exp^c_0(W \log^c_0(h))$ the M\"obius matrix--vector
+product and $\alpha_{ij}$ either degree-normalised (HGCN) or attention (HGAT).
+
+We run all eight combinations of A, B, C, plus a \texttt{no\_graph} control
+that raises $\tau$ until essentially no edge survives, leaving parameter count
+and architecture unchanged and removing only the relational information.
 
 \begin{figure}[t]
 \begin{center}
@@ -156,6 +205,36 @@ the paired $t$-test and call a result significant only when both agree, with
 Bonferroni across arms. Every arm receives the same trial budget. Full details,
 including a cache/RNG confound worth $\approx 5$ MCC that dictates run order,
 are in Appendix~\ref{app:protocol}.
+
+%-------------------------------------------------------------------------
+\section{Is the motivation sound? $\delta$-hyperbolicity is an artifact}
+\label{sec:delta}
+
+Hyperbolic layers are usually motivated by measuring Gromov
+$\delta$-hyperbolicity on activations and finding it small, which is read as
+``the representation is tree-like, so it belongs in hyperbolic space''. Before
+testing the layers we checked that diagnostic, because it is what would tell us
+where to expect a gain.
+
+It does not survive contact with real activations. Computed on the Euclidean
+metric, ModernBERT at layer 16 gives $\delta_{\text{eucl}} = 0.0021$, which
+would indicate an almost perfectly tree-like space. But the same layer has a
+ratio of maximum to median token norm of $156$, and $\delta$ is a
+scale-sensitive statistic: a handful of very-large-norm ``attention sink''
+tokens dominate the Gromov products and drive the estimate toward zero.
+Recomputing on the \emph{angular} metric $\arccos(\cos(\cdot,\cdot))$, which is
+invariant to those outliers, gives $0.2127$ --- against BERT's $0.2114$. The
+two backbones are statistically indistinguishable in tree-likeness, while the
+Euclidean estimate differs between them by two orders of magnitude. Flan-T5
+shows the same pattern with $357\times$ norm outliers.
+
+The practical consequence is that measured $\delta$ cannot be used to predict
+which backbone or which component will benefit from curvature, and any work
+selecting targets that way is selecting on an outlier statistic. We therefore
+do not use it to choose where to apply Stages A--C; we apply all three
+everywhere and let the paired comparisons decide. We recommend reporting
+angular $\delta$ alongside Euclidean $\delta$, together with the norm-outlier
+ratio, in any work motivated by measured hyperbolicity.
 
 %-------------------------------------------------------------------------
 \section{\textsc{Glot} is better than reported}
@@ -369,23 +448,56 @@ Backbone (layer) & Rescaling & $\tau=0.6$ (pub.) & $q=0.05$ \\
 \end{table}
 
 %-------------------------------------------------------------------------
-\section{Three hyperbolic stages}
+\section{Does hyperbolic geometry help?}
 \label{sec:arms}
 
-We now turn to the paper's main question: does hyperbolic geometry extend
-\textsc{Glot}? Stage A replaces the cosine threshold with a geodesic one in the
-Poincar\'e ball, Stage B replaces the readout with a gyro-midpoint, and Stage C
-replaces message passing with M\"obius operations; we run all eight
-combinations.
+This is the paper's main question. Earlier campaigns of ours searched only
+graph-construction knobs, inheriting the learning rate, depth, width and
+projection width from values chosen for a \emph{Euclidean} pooler --- an
+asymmetry that favours the baseline and that produced a false positive we
+retract in Appendix~\ref{app:narrow}. Structured and non-Euclidean layers are
+known to underperform badly when trained at learning rates tuned for a dense
+Euclidean layer, so this confound points against the hyperbolic arms and had to
+be removed before any conclusion was drawn. We therefore repeat the campaign
+with \textsc{Glot}'s full grid applied identically to every arm: 40 trials per
+arm, 15 confirmation seeds, 990 runs. Notably \emph{every} arm including the
+baseline selected $\mathrm{lr}=2\times10^{-4}$; what moved was depth and width.
 
-Earlier campaigns of ours searched only graph-construction knobs, inheriting
-the learning rate, depth, width and projection width from values chosen for a
-\emph{Euclidean} pooler --- an asymmetry that favours the baseline and that
-produced a false positive we retract in Appendix~\ref{app:narrow}. We therefore
-repeat the campaign with \textsc{Glot}'s full grid applied identically to every
-arm: 40 trials per arm, 15 confirmation seeds, 990 runs. Notably \emph{every}
-arm including the baseline selected $\mathrm{lr}=2\times10^{-4}$; what moved
-was depth and width.
+Table~\ref{tab:verdict} summarises the answer across every setting we ran;
+Table~\ref{tab:arms} gives the underlying BERT numbers.
+
+\begin{table}[t]
+\caption{Per-stage verdict. Entries are the paired mean difference against
+\textsc{Glot}'s Euclidean baseline on shared seeds; $\dagger$ marks results
+significant on both the paired $t$-test and the exact sign test, $\ddagger$
+those additionally surviving Bonferroni. ``---'' was not run. The pattern is
+consistent: the readout (B) is reliably harmful wherever it appears, message
+passing (C) is the only component that ever helps, and the graph (A) is flat.}
+\label{tab:verdict}
+\begin{center}
+\small
+\begin{tabular}{lccccl}
+\toprule
+Arm & CoLA & STS-B & MRPC & TinyLlama & Verdict \\
+    & (MCC) & (Spear.) & (F1) & (Spear.) & \\
+\midrule
+A   & $+0.70$ & $+0.03$ & $+0.04$ & $+0.04$ & flat everywhere \\
+B   & $-1.26$ & $-1.07^{\ddagger}$ & $-0.33$ & --- & harmful \\
+C   & $\mathbf{+1.42}^{\dagger}$ & $+0.20$ & $-0.32$ & --- & helps on CoLA only \\
+\midrule
+AB  & $-1.24$ & $-0.75^{\ddagger}$ & $-0.28$ & $-3.56^{\ddagger}$ & harmful \\
+AC  & $+0.45$ & $\mathbf{+0.24}$ & $-0.15$ & $+0.21$ & flat to slightly positive \\
+BC  & $+0.22$ & $-1.24^{\ddagger}$ & $-0.31$ & $-1.17^{\ddagger}$ & harmful \\
+ABC & $-0.53$ & $-0.84^{\ddagger}$ & $-0.26$ & $-4.51^{\ddagger}$ & harmful \\
+\midrule
+\multicolumn{6}{l}{\emph{Every arm containing B is negative on STS-B and on the decoder;
+no arm containing B}} \\
+\multicolumn{6}{l}{\emph{is positive anywhere. Every arm containing C but not B is
+positive on CoLA and STS-B.}} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
 
 \begin{table}[t]
 \caption{BERT-base, wide search, $n=15$ paired seeds. $\Delta_{\text{base}}$ is
@@ -483,36 +595,35 @@ that others do not lose time to them.
 %-------------------------------------------------------------------------
 \section{Conclusion}
 
-We set out to ask whether hyperbolic geometry extends \textsc{Glot}, and the
-answer depends entirely on which component receives it. Hyperbolic message
-passing (Stage C) is the most promising of the three, giving $+1.42$ MCC on
-CoLA with $13/15$ seeds positive and pairing with Stage A to produce the best
-STS-B arm we measured; the hyperbolic readout (Stage B) is significantly
-harmful on both an encoder and a decoder backbone. Had we reported
-``hyperbolic pooling'' as one factor, these would have cancelled. Stage C's
-gain is not yet separable from a no-graph control, so we present it as a
-direction rather than a result, and we say what would settle it: a
-density-matched Euclidean control at $n \geq 30$.
+Our question was whether hyperbolic geometry helps graph-based sentence
+pooling. The answer is that it depends entirely on \emph{which component}
+receives it, and that the components disagree strongly enough to cancel.
 
-Two conclusions about \textsc{Glot} follow, both favourable. It performs better
-than its own paper reports, by $3.03$ MCC on CoLA and $0.36$ on RTE at the
-authors' seed over the authors' grid, because published numbers are single-seed
-maxima rather than seed means --- a reporting convention, not a modelling
-issue. And it is strikingly insensitive to the graph it is given: realised
-density spans $0.00$ to $0.99$ across backbones and arms with no change in
-accuracy, and the GNN backbone can be swapped without effect. For a method
-intended to be dropped on top of an arbitrary frozen encoder, that robustness
-is a genuine practical asset, and our measurements let a practitioner exploit
-it: port \textsc{Glot} as published rather than re-tuning the threshold, and
-avoid mean-based norm rescaling on backbones with attention-sink outliers,
-which costs $11$ MCC.
+M\"obius message passing (C) is the one component that ever helps: $+1.42$ MCC
+on CoLA with $13/15$ seeds positive, and A${+}$C is the best arm on STS-B. The
+Einstein gyro-midpoint readout (B) is reliably harmful --- negative in every
+setting we ran, $0$--$1$ of $15$ seeds positive on STS-B, surviving Bonferroni,
+and costing $3.6$ Spearman on a decoder backbone. The Poincar\'e graph (A) is
+flat everywhere. Averaged as a single ``hyperbolic'' factor these would report
+approximately zero, which is what a study that did not decompose the
+architecture would have concluded.
 
-Finally, a methodological note that applies to us as much as to anyone: at
-these effect sizes the difference between a seed mean and a grid maximum is
-larger than most of the differences being claimed, so the estimator should be
-reported alongside the number. Two of our own apparently positive results did
-not survive that discipline, and we report them as retractions in
-Appendices~\ref{app:narrow} and~\ref{app:artifacts}.
+We are deliberately cautious about C. Its gain does not extend to MRPC, and on
+CoLA it is not separable from a control that deletes the graph entirely
+($8/7$ seeds, sign $p=1.00$). We therefore report it as the one direction worth
+pursuing rather than as an established improvement, and we state what would
+settle it: a density-matched Euclidean control at $n \geq 30$, and Stage C on
+the decoder backbone, neither of which we have run.
+
+Two lessons generalise beyond this architecture. First, the standard
+motivation for going hyperbolic --- low measured $\delta$-hyperbolicity --- is
+an artifact of norm outliers, and on an outlier-invariant metric the backbones
+it is used to distinguish are indistinguishable. Second, non-Euclidean layers
+must be given the same optimiser and architecture budget as the Euclidean
+baseline before they are judged: our own earlier campaign, which inherited
+Euclidean hyper-parameters, produced a result we later had to retract. Both
+points cost us real experiments, and we report them so that the next study of
+this kind does not repeat them.
 
 \bibliography{references}
 \bibliographystyle{iclr2026_conference}
@@ -748,17 +859,6 @@ the residual is not explained by the recipe discrepancy and we leave it open.
 
 \section{Measurement artifacts}
 \label{app:artifacts}
-
-\paragraph{$\delta$-hyperbolicity on raw activations measures attention sinks.}
-Motivating hyperbolic pooling by measured tree-likeness is misleading on raw
-activations. ModernBERT at layer 16 has $\delta_{\text{eucl}}=0.0021$, which
-would indicate an almost perfectly tree-like space; its ratio of maximum to
-median token norm is $156$. Computing $\delta$ on the \emph{angular} metric
-$\arccos(\cos(\cdot,\cdot))$, which is invariant to those outliers, gives
-$0.2127$ --- statistically indistinguishable from BERT's $0.2114$. Flan-T5
-shows the same pattern with $357\times$ norm outliers. We recommend reporting
-angular $\delta$ alongside Euclidean $\delta$ together with the norm-outlier
-ratio in any work motivated by measured hyperbolicity.
 
 \paragraph{Tuning maxima are inflated.} With $T$ trials and per-seed noise
 $\sigma$, the expected maximum is inflated even for an arm identical to the
