@@ -36,10 +36,15 @@ more efficiently than Euclidean space, can extend it, and we study three stages
 independently: a Poincar\'e token graph (\textbf{A}), a gyro-midpoint readout
 (\textbf{B}), and M\"obius message passing (\textbf{C}). Across $990$ runs with
 $15$ paired seeds and an equal search budget per stage over \textsc{Glot}'s own
-grid, \textbf{Stage C is the strongest}: $+1.42$ MCC on CoLA with $13/15$ seeds
-positive, significant on both a paired $t$-test and an exact sign test, and
-A${+}$C is the best arm on STS-B. \textbf{Stage B is significantly harmful} on
-both an encoder and a decoder backbone, surviving Bonferroni. ``Hyperbolic
+grid, \textbf{Stage C is the strongest of the three}: $+1.42$ MCC on CoLA with
+$13/15$ seeds positive, significant on both a paired $t$-test and an exact sign
+test, and A${+}$C is the best arm on STS-B. The gain is task-dependent rather
+than uniform --- on MRPC Stage C is slightly negative ($-0.32$ F1, $4/15$ seeds
+positive, not significant), and on CoLA it is not separable from a control that
+deletes the graph entirely --- so we report it as the most promising direction
+of the three rather than as an established improvement.
+\textbf{Stage B is significantly harmful} on both an encoder and a decoder
+backbone, surviving Bonferroni. ``Hyperbolic
 pooling'' should therefore not be treated as one design choice: its readout and
 its message passing move in opposite directions, and conflating them hides both.
 
@@ -89,7 +94,8 @@ reported their average and concluded nothing.
       equal-budget search over \textsc{Glot}'s own grid with 15 paired seeds,
       hyperbolic message passing (Stage C) gives $+1.42$ MCC on CoLA with
       $13/15$ seeds positive, significant on both tests, and A${+}$C is the
-      best arm on STS-B. The hyperbolic readout (Stage B) is significantly
+      best arm on STS-B; on MRPC it is slightly negative, so the effect is
+      task-dependent. The hyperbolic readout (Stage B) is significantly
       harmful on both an encoder and a decoder backbone. Reporting
       ``hyperbolic'' as a single factor would have cancelled these out.
 \item \textbf{\textsc{Glot} is under-reported} (\S\ref{sec:repro}). The
