@@ -193,15 +193,44 @@ DEFAULT_MTEB_TASKS = [
     "ArguAna", "TwentyNewsgroupsClustering", "SprintDuplicateQuestions",
 ]
 
-# Shared GLUE/IMDB hyper-parameters (from README).
+# Shared GLUE/IMDB hyper-parameters.
+#
+# NOTE: these follow the PAPER (Appendix B.2 + "Training Details"), not the repo
+# README. The two disagree, and the paper is the reference we reproduce:
+#     paper : 2 epochs, GATConv hidden 128, tau tuned per task (Table 8)
+#     README: 3 epochs, gat_hidden_dim 256, tau 0.8
+#
+# `override_precompute` is pinned to "0" ON PURPOSE, and every cache must be
+# pre-warmed first. Upstream `precompute_hidden_states()` early-returns on a
+# cache hit, so it only advances the global torch RNG when the cache is COLD.
+# The classifier head is constructed *after* that call, so a cold run and a warm
+# run give different weight init and different batch order for the SAME seed
+# (measured: 40.36 vs 45.54 MCC on CoLA tau=0.6, against a run-to-run std of
+# 0.31). Whichever arm runs first would otherwise be scored under different
+# conditions from all the others -- exactly the confound that invalidated the
+# July 2026 ablation, where `baseline` was the first row for every single task.
+#
+# => ALWAYS run `gcp/prewarm_caches.sh <tasks>` before this script.
 GLUE_HP = {
-    "epochs": "3", "batch_size": "32", "eval_batch_size": "64", "lr": "2e-4",
+    "epochs": "2", "batch_size": "32", "eval_batch_size": "64", "lr": "2e-4",
     "weight_decay": "0.0", "gnn_type": "gat", "scorer_hidden": "128",
-    "gat_hidden_dim": "256", "num_layers": "2", "jk_mode": "cat",
-    "tau": "0.8", "rho": "1.0", "curvature": "1.0", "knn_k": "8",
-    "proj_dim": "256", "precompute_hidden_states": "1", "finetune_backbone": "0",
+    "gat_hidden_dim": "128", "num_layers": "2", "jk_mode": "cat",
+    "rho": "1.0", "curvature": "1.0", "knn_k": "8",
+    "proj_dim": "256", "precompute_hidden_states": "1",
+    "override_precompute": "0", "finetune_backbone": "0",
     "adaptive_length": "0",
 }
+
+# Paper Table 8 shows a different best tau per task, and Table 1 reports that
+# best cell. Using one global tau (the old "0.8") silently DETUNES the cosine
+# baseline while every hyperbolic arm gets its own rho / knn_k -- an unfair
+# comparison that inflates the hyperbolic arms. Give each task its tuned tau.
+TASK_TAU = {"cola": "0.4", "stsb": "0.6", "rte": "0.6"}
+DEFAULT_TAU = "0.6"
+
+
+def task_tau(task: str) -> str:
+    return TASK_TAU.get(task, DEFAULT_TAU)
 
 
 def glue_max_length(task: str) -> str:
@@ -245,6 +274,7 @@ def maybe_git_push(paths: List[str], message: str, push: bool) -> None:
 def build_main_cmd(python: str, model: Model, task: str, cfg: Config, seed: int,
                    results_csv: str, mteb_task: Optional[str] = None) -> List[str]:
     hp = dict(GLUE_HP)
+    hp["tau"] = task_tau(task)
     hp.update(model.overrides)
     cmd = [
         python, os.path.join(HERE, "main.py"),

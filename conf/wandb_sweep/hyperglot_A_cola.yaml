@@ -1,0 +1,98 @@
+# HyperGLOT sweep: Stage A (hyperbolic / Poincare token-graph construction).
+#
+# Identical protocol and identical search budget to
+# `hyperglot_baseline_cola.yaml` -- the ONLY differences are the arm switches
+# (graph_metric=poincare) and the geometry knobs that replace `tau`:
+#
+#   Euclidean : edge(i,j) if cosine(x_i, x_j)              > tau
+#   Stage A   : edge(i,j) if d_Poincare(exp0(x_i),exp0(x_j)) < rho
+#
+# `rho` is the hyperbolic analogue of `tau` (it controls graph sparsity), so it
+# gets a comparably sized grid. `curvature` and `knn_k` are the extra degrees of
+# freedom Stage A introduces.
+#
+# Usage:
+#   wandb sweep conf/wandb_sweep/hyperglot_A_cola.yaml
+#   wandb agent <sweep-id>
+
+program: main.py
+method: bayes
+name: hyperglot_A_cola
+metric:
+  name: metrics/mcc
+  goal: maximize
+
+parameters:
+  # ---- fixed: identifies this arm ----
+  pooling_method:
+    value: glot
+  graph_metric:
+    value: poincare
+  hyperbolic_gnn:
+    value: 0
+  hyperbolic_readout:
+    value: 0
+  gnn_type:
+    value: gat
+
+  # ---- fixed: task / protocol (paper Training Details) ----
+  model_name_or_path:
+    value: bert-base-uncased
+  decoder_cls_last_token:
+    value: 0
+  task:
+    value: cola
+  max_length:
+    value: 128
+  adaptive_length:
+    value: 0
+  epochs:
+    value: 2
+  batch_size:
+    value: 32
+  eval_batch_size:
+    value: 64
+  seed:
+    value: 42
+  verbose:
+    value: 1
+  precompute_hidden_states:
+    value: 1
+  override_precompute:
+    value: 0
+  finetune_backbone:
+    value: 0
+
+  # ---- searched: paper Table 6 (identical budget to the baseline) ----
+  lr:
+    values: [1.e-3, 2.e-4, 2.e-5]
+  weight_decay:
+    values: [0.0, 1.e-5, 5.e-5]
+  num_layers:
+    values: [2, 4]
+  gat_hidden_dim:
+    values: [64, 128, 256]
+  jk_mode:
+    values: [cat, max, mean]
+  proj_dim:
+    values: [128, 256, 512]
+  scorer_hidden:
+    values: [128, 256]
+
+  # ---- searched: Stage A geometry ----
+  graph_adj:
+    values: [threshold, knn]
+  rho:
+    values: [0.5, 1.0, 1.5, 2.0, 3.0, 5.0]
+  curvature:
+    values: [0.25, 0.5, 1.0, 2.0]
+  knn_k:
+    values: [4, 8, 16]
+  feature_norm:
+    values: [0, 1]
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args}

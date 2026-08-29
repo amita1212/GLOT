@@ -1,0 +1,96 @@
+# HyperGLOT sweep: original GLOT baseline (cosine graph, Euclidean GNN + readout).
+#
+# Style follows the DiGRAF sweep configs (method: bayes, discrete `values` lists,
+# single `metric` to optimise). The search space is GLOT's OWN published grid
+# (paper Table 6), not DiGRAF's -- DiGRAF's values are for ZINC/OGB GNNs and do
+# not transfer.
+#
+#   lr        {1e-3, 2e-4, 2e-5}
+#   wd        {0.0, 1e-5, 5e-5}
+#   K         {2, 4}
+#   hidden    {64, 128, 256}
+#   jk        {cat, max, mean, none}
+#   proj_dim  {128, 256, 512}
+#   tau       {0.1, 0.3, 0.6}          <- extended to the Table 8 range
+#
+# IMPORTANT: the baseline is swept with the SAME budget as every hyperbolic arm.
+# Table 8 shows CoLA MCC moves 39.62 -> 47.49 on tau alone, so comparing a tuned
+# method against an untuned baseline is meaningless.
+#
+# Usage:
+#   wandb sweep conf/wandb_sweep/hyperglot_baseline_cola.yaml
+#   wandb agent <sweep-id>
+
+program: main.py
+method: bayes
+name: hyperglot_baseline_cola
+metric:
+  name: metrics/mcc          # CoLA is reported as MCC in the paper
+  goal: maximize
+
+parameters:
+  # ---- fixed: identifies this arm ----
+  pooling_method:
+    value: glot
+  graph_metric:
+    value: cosine
+  hyperbolic_gnn:
+    value: 0
+  hyperbolic_readout:
+    value: 0
+  graph_adj:
+    value: threshold
+  gnn_type:
+    value: gat
+
+  # ---- fixed: task / protocol (paper Training Details) ----
+  model_name_or_path:
+    value: bert-base-uncased
+  decoder_cls_last_token:
+    value: 0
+  task:
+    value: cola
+  max_length:
+    value: 128
+  adaptive_length:
+    value: 0
+  epochs:
+    value: 2
+  batch_size:
+    value: 32
+  eval_batch_size:
+    value: 64
+  seed:
+    value: 42
+  verbose:
+    value: 1
+  precompute_hidden_states:
+    value: 1
+  override_precompute:
+    value: 0
+  finetune_backbone:
+    value: 0
+
+  # ---- searched: paper Table 6 ----
+  lr:
+    values: [1.e-3, 2.e-4, 2.e-5]
+  weight_decay:
+    values: [0.0, 1.e-5, 5.e-5]
+  num_layers:
+    values: [2, 4]
+  gat_hidden_dim:
+    values: [64, 128, 256]
+  jk_mode:
+    values: [cat, max, mean]
+  proj_dim:
+    values: [128, 256, 512]
+  scorer_hidden:
+    values: [128, 256]
+  tau:
+    values: [0.1, 0.2, 0.3, 0.4, 0.6, 0.8]
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args}

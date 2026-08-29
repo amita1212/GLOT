@@ -1,25 +1,17 @@
 import os
 import json
-import csv
 import time
 import random
 import argparse
 import string
-import subprocess
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
-from datetime import datetime
 
 import wandb
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import geoopt
-from hyperbolic_layers import HyperbolicGCNConv, HyperbolicGATConv, hyperbolic_readout
-from hyperbolic_graph import (
-    HyperbolicGraphConfig, build_pyg_graphs_hyper, _GRAPH_STATS,
-)
 
 try:
     from tqdm import tqdm
@@ -191,10 +183,6 @@ def build_pyg_graphs(
         else:
             raise ValueError(f"Unknown adjacency: {adjacency}")
 
-        # Telemetry only. Keeps the cosine baseline as auditable as the
-        # hyperbolic arms so a density mismatch between them cannot hide.
-        _GRAPH_STATS.observe(x_b.size(0), edge_index.size(1))
-
         data.token_idx = token_idx
         graphs.append(data)
 
@@ -211,32 +199,6 @@ class GLOT(nn.Module):
         adjacency="threshold",
         tau=0.3,
         device=None,
-        # --- Stage A (HyperGLOT) options; defaults preserve original GLOT ---
-        graph_metric="cosine",   # {"cosine", "poincare"}
-        curvature=1.0,
-        rho=1.0,
-        rho_quantile=-1.0,
-        tau_quantile=-1.0,        # cosine twin of rho_quantile (density matching)
-        knn_k=8,
-        feature_norm=False,
-        # NOTE: this pooler is a DUPLICATE of the one in main.py. Any change to
-        # graph construction must be applied in BOTH files -- fixing main.py
-        # alone silently left every stress-test run on an empty graph once
-        # before. See /memories/repo/glot-known-bugs.md.
-        feature_mode="none",      # {none,l2,unit,center,center_unit,cls_root,cls_root_unit}
-        graph_scale=1.0,
-        graph_curvature=-1.0,     # <0 -> fall back to `curvature`
-        edge_weight_mode="binary",# {binary,soft,soft_z,hyp,hyp_z,depth}
-        edge_temp=0.25,
-        # --- Stage B / C (HyperGLOT) options; defaults preserve original GLOT ---
-        hyperbolic_gnn=False,
-        hyperbolic_readout=False,
-        hyp_gnn_type="gcn",       # Stage C conv when hyperbolic_gnn: {"gcn", "gat"}
-        readout_clip=0.0,         # Stage B: clip feature norm before exp map (0=off)
-        readout_scale=False,      # Stage B: learnable input scale before the exp map
-        learnable_curvature=False,# trainable Poincare ball curvature
-        gnn_input_clip=0.0,       # Stage C: clip token norm before the entry exp map (0=off)
-        gnn_input_scale=False,    # Stage C: learnable input scale before the entry exp map
     ):
         super().__init__()
 
@@ -247,49 +209,12 @@ class GLOT(nn.Module):
         self.adjacency = adjacency
         self.tau = tau
         self.device = device
-        self.graph_metric = graph_metric
-        self.curvature = curvature
-        self.rho = rho
-        self.rho_quantile = rho_quantile
-        self.tau_quantile = float(tau_quantile)
-        self.knn_k = knn_k
-        self.feature_norm = feature_norm
-        self.feature_mode = str(feature_mode)
-        self.graph_scale = float(graph_scale)
-        self.graph_curvature = (float(graph_curvature) if float(graph_curvature) > 0
-                                else float(curvature))
-        self.edge_weight_mode = str(edge_weight_mode)
-        self.edge_temp = float(edge_temp)
-        self.hyperbolic_gnn = bool(hyperbolic_gnn)
-        self.hyperbolic_readout = bool(hyperbolic_readout)
-        self.hyp_gnn_type = str(hyp_gnn_type)
-        self.readout_clip = float(readout_clip)
-        self.learnable_curvature = bool(learnable_curvature)
-        self.gnn_input_clip = float(gnn_input_clip)
-
-        self.ball = None
-        if self.hyperbolic_gnn or self.hyperbolic_readout:
-            self.ball = geoopt.PoincareBall(c=self.curvature, learnable=self.learnable_curvature)
-
-        # Optional learnable input scales (fix the boundary-saturation failure).
-        self.readout_scale = None
-        if self.hyperbolic_readout and bool(readout_scale):
-            self.readout_scale = nn.Parameter(torch.tensor(0.1))
-        self.gnn_input_scale = None
-        if self.hyperbolic_gnn and bool(gnn_input_scale):
-            self.gnn_input_scale = nn.Parameter(torch.tensor(0.1))
 
         # Build conv stack
         self.convs = nn.ModuleList()
         last_dim = in_dim
         for _ in range(num_layers):
-            if self.hyperbolic_gnn:
-                if self.hyp_gnn_type == "gat":
-                    layer = HyperbolicGATConv(last_dim, hidden_dim, self.ball)
-                else:
-                    layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
-            else:
-                layer = conv(last_dim, hidden_dim, edge_dim=1)
+            layer = conv(last_dim, hidden_dim, edge_dim=1)
             self.convs.append(layer)
             last_dim = hidden_dim
 
@@ -316,64 +241,21 @@ class GLOT(nn.Module):
         device = self.device or hidden.device
         B, L, d = hidden.shape
 
-        # Same four-way routing as main.py: any poincare metric OR any knn
-        # adjacency uses the Stage A builder; cosine+threshold stays original.
-        use_hyperbolic_builder = (
-            (self.graph_metric == "poincare")
-            or (self.adjacency == "knn")
-            or (self.edge_weight_mode != "binary")
-            or (0.0 < getattr(self, "tau_quantile", -1.0) < 1.0)
+        batch = build_pyg_graphs(
+            hidden, attention_mask, adjacency=self.adjacency,
+            tau=self.tau, device=device
         )
-        if use_hyperbolic_builder:
-            hyperbolic_config = HyperbolicGraphConfig(
-                graph_metric=self.graph_metric,
-                adjacency=self.adjacency,
-                tau=self.tau,
-                tau_quantile=getattr(self, "tau_quantile", -1.0),
-                rho=self.rho,
-                rho_quantile=getattr(self, "rho_quantile", -1.0),
-                k=self.knn_k,
-                curvature=getattr(self, "graph_curvature", self.curvature),
-                feature_norm=self.feature_norm,
-                feature_mode=getattr(self, "feature_mode", "none"),
-                graph_scale=getattr(self, "graph_scale", 1.0),
-                edge_weight_mode=getattr(self, "edge_weight_mode", "binary"),
-                edge_temp=getattr(self, "edge_temp", 0.25),
-            )
-            batch = build_pyg_graphs_hyper(
-                hidden, attention_mask, hyperbolic_config, device=device
-            )
-        else:
-            batch = build_pyg_graphs(
-                hidden, attention_mask, adjacency=self.adjacency,
-                tau=self.tau, device=device
-            )
 
         batch = batch.to(device)
         x, edge_index = batch.x, batch.edge_index
         edge_weight = getattr(batch, "edge_attr", None)
 
         h_list = [x]
-        if self.hyperbolic_gnn:
-            # Stage C: hyperbolic Token-GNN (see hyperbolic_layers.py). Stabilise
-            # the entry lift so raw token norms don't saturate expmap0 at the
-            # ball boundary (mirrors the Stage B readout fix).
-            x_in = x
-            if self.gnn_input_scale is not None:
-                x_in = x_in * self.gnn_input_scale
-            if self.gnn_input_clip and self.gnn_input_clip > 0:
-                norm = x_in.norm(dim=-1, keepdim=True).clamp_min(1e-5)
-                x_in = x_in * torch.clamp(self.gnn_input_clip / norm, max=1.0)
-            h_ball = self.ball.projx(self.ball.expmap0(x_in))
-            for conv in self.convs:
-                h_ball = conv(h_ball, edge_index, edge_weight)
-                h_list.append(self.ball.logmap0(h_ball))
-        else:
-            h = x
-            for conv in self.convs:
-                h = conv(h, edge_index, edge_attr=edge_weight)
-                h = F.relu(h)
-                h_list.append(h)
+        h = x
+        for conv in self.convs:
+            h = conv(h, edge_index, edge_attr=edge_weight)
+            h = F.relu(h)
+            h_list.append(h)
 
         if self.jk_mode == "cat":
             h_all = torch.cat(h_list, dim=-1)
@@ -386,16 +268,7 @@ class GLOT(nn.Module):
 
         scores = self.score_layer(h_all).squeeze(-1)
         weights = softmax(scores, batch.batch)
-        if self.hyperbolic_readout:
-            # Stage B: Poincare gyro-midpoint readout (see hyperbolic_layers.py).
-            readout_c = self.ball.c if self.learnable_curvature else self.curvature
-            pooled = hyperbolic_readout(
-                h_all, weights, batch.batch, self.ball, readout_c,
-                num_graphs=int(batch.batch.max().item()) + 1,
-                scale=self.readout_scale, clip=self.readout_clip,
-            )
-        else:
-            pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
+        pooled = scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
         
         return pooled
 
@@ -414,28 +287,7 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
     elif name == "glot":
         return GLOT(
             in_dim=hidden_size, hidden_dim=args.gat_hidden_dim,
-            num_layers=args.num_layers, jk_mode=args.jk_mode, tau=args.tau,
-            adjacency=getattr(args, "graph_adj", "threshold"),
-            graph_metric=getattr(args, "graph_metric", "cosine"),
-            curvature=getattr(args, "curvature", 1.0),
-            rho=getattr(args, "rho", 1.0),
-            rho_quantile=float(getattr(args, "rho_quantile", -1.0)),
-            tau_quantile=float(getattr(args, "tau_quantile", -1.0)),
-            knn_k=getattr(args, "knn_k", 8),
-            feature_norm=bool(getattr(args, "feature_norm", 0)),
-            feature_mode=getattr(args, "feature_mode", "none"),
-            graph_scale=float(getattr(args, "graph_scale", 1.0)),
-            graph_curvature=float(getattr(args, "graph_curvature", -1.0)),
-            edge_weight_mode=getattr(args, "edge_weight_mode", "binary"),
-            edge_temp=float(getattr(args, "edge_temp", 0.25)),
-            hyperbolic_gnn=bool(getattr(args, "hyperbolic_gnn", 0)),
-            hyperbolic_readout=bool(getattr(args, "hyperbolic_readout", 0)),
-            hyp_gnn_type=getattr(args, "hyp_gnn_type", "gcn"),
-            readout_clip=float(getattr(args, "readout_clip", 0.0)),
-            readout_scale=bool(getattr(args, "readout_scale", 0)),
-            learnable_curvature=bool(getattr(args, "learnable_curvature", 0)),
-            gnn_input_clip=float(getattr(args, "gnn_input_clip", 0.0)),
-            gnn_input_scale=bool(getattr(args, "gnn_input_scale", 0)))
+            num_layers=args.num_layers, jk_mode=args.jk_mode, tau=args.tau)
     else: raise ValueError(f"Unknown pooling method: {name}")
 
 def pool_hidden(pooler, hidden, mask, is_decoder, name):
@@ -509,84 +361,6 @@ def generate_dataset(
 # -------------------------
 # Main Experiment Logic
 # -------------------------
-
-def _arm_name(args) -> str:
-    """Ablation-arm label from the three HyperGLOT switches (A/B/C)."""
-    if getattr(args, "arm", ""):
-        return args.arm
-    a = (getattr(args, "graph_metric", "cosine") == "poincare")
-    b = bool(getattr(args, "hyperbolic_readout", 0))
-    c = bool(getattr(args, "hyperbolic_gnn", 0))
-    if not (a or b or c):
-        return "baseline"
-    if a and b and c:
-        return "ABC"
-    return "".join([n for n, f in (("A", a), ("B", b), ("C", c)) if f])
-
-
-def _append_stress_csv(args, best_acc: float):
-    """Append the negation stress-test result (accuracy) to a CSV."""
-    path = args.results_csv
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    row = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "run_tag": getattr(args, "run_tag", ""),
-        "model": args.model_name_or_path,
-        "task": "stress",
-        "arm": _arm_name(args),
-        "pooling": args.pooling_method,
-        "graph_metric": args.graph_metric,
-        "graph_adj": args.graph_adj,
-        "hyperbolic_gnn": int(getattr(args, "hyperbolic_gnn", 0)),
-        "hyperbolic_readout": int(getattr(args, "hyperbolic_readout", 0)),
-        "distractor_ratio": args.distractor_ratio,
-        "relational_distance": args.relational_distance,
-        "signal_position": args.signal_position,
-        "tau": args.tau,
-        "rho": args.rho,
-        "curvature": args.curvature,
-        "knn_k": args.knn_k,
-        "num_layers": args.num_layers,
-        "epochs": args.epochs,
-        "batch_size": args.batch_size,
-        "lr": args.lr,
-        "seed": args.seed,
-        "acc": round(float(best_acc), 6),
-    }
-    write_header = not os.path.exists(path) or os.path.getsize(path) == 0
-    with open(path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(row.keys()))
-        if write_header:
-            writer.writeheader()
-        writer.writerow(row)
-    print(f"[results] appended stress row -> {path}", flush=True)
-
-
-def _git_push_results(path: str, message: str, branch: str = "", remote: str = "origin"):
-    """Stage, commit and push the results CSV. Never raises (git problems must
-    not abort a run)."""
-    try:
-        repo_dir = os.path.dirname(os.path.abspath(path))
-        add = subprocess.run(["git", "add", os.path.abspath(path)],
-                             cwd=repo_dir, capture_output=True, text=True)
-        if add.returncode != 0:
-            print(f"[git] add failed: {add.stderr.strip()}", flush=True)
-            return
-        commit = subprocess.run(["git", "commit", "-m", message],
-                                cwd=repo_dir, capture_output=True, text=True)
-        if commit.returncode != 0:
-            if "nothing to commit" not in (commit.stdout + commit.stderr):
-                print(f"[git] commit failed: {(commit.stdout + commit.stderr).strip()}", flush=True)
-            return
-        push_cmd = ["git", "push", remote] + ([branch] if branch else [])
-        push = subprocess.run(push_cmd, cwd=repo_dir, capture_output=True, text=True)
-        if push.returncode != 0:
-            print(f"[git] push failed: {(push.stdout + push.stderr).strip()}", flush=True)
-        else:
-            print(f"[git] pushed results -> {remote} {branch}".rstrip(), flush=True)
-    except Exception as exc:
-        print(f"[git] skipped ({exc})", flush=True)
-
 
 def run_experiment(backbone: Backbone, args, device):
 
@@ -683,47 +457,17 @@ def run_experiment(backbone: Backbone, args, device):
     print(f"Experiment Finished. Best Validation Accuracy: {best_acc:.4f}")
     print("-" * 60)
 
-    # Persist the stress-test result (accuracy at this distractor ratio) so the
-    # negation "needle in a haystack" sweep from the article is saved to CSV.
-    if getattr(args, "results_csv", ""):
-        _append_stress_csv(args, best_acc)
-        # Push the CSV to GitHub after each run so results survive a crash.
-        if getattr(args, "git_push", 0):
-            _git_push_results(
-                args.results_csv,
-                message=f"stress: {args.model_name_or_path} {_arm_name(args)} d{args.distractor_ratio} seed{args.seed}",
-                branch=getattr(args, "git_branch", ""),
-                remote=getattr(args, "git_remote", "origin"),
-            )
-    print("RESULT_JSON " + json.dumps({
-        "model": args.model_name_or_path, "task": "stress",
-        "arm": _arm_name(args), "graph_metric": args.graph_metric,
-        "graph_adj": args.graph_adj, "hyperbolic_gnn": int(getattr(args, "hyperbolic_gnn", 0)),
-        "hyperbolic_readout": int(getattr(args, "hyperbolic_readout", 0)),
-        "distractor_ratio": args.distractor_ratio, "seed": args.seed,
-        "metrics": {"acc": best_acc},
-    }, default=str), flush=True)
-
 
     INPUT_SENTENCE = eval_data[0]['text']
     all_vectors, all_labels, num_tokens = get_augmented_data(backbone.model_name, INPUT_SENTENCE, device)
     sample_batch = next(iter(val_loader))
     hidden, mask = forward_hidden(backbone, {"input_ids": sample_batch["input_ids"], "attention_mask": sample_batch["attention_mask"]})
     z = pool_hidden(pooler, hidden, mask, backbone.is_decoder, args.pooling_method)
+    dim = z.size(-1)
+    pooled_ours = z[0]
+    all_labels.append("[Token-GNN]")
     print(z.shape)
-    # The pooled GLOT vector only lives in the same space as the raw token
-    # embeddings when its dimension matches (e.g. mean/max pooling). With a
-    # projection head (jk_mode=cat/proj) the pooled dim differs, so appending it
-    # to the token-similarity matrix would crash. Only include it when dims align.
-    if z.size(-1) == all_vectors.size(-1):
-        all_labels.append("[Token-GNN]")
-        all_vectors = torch.cat(
-            [all_vectors.detach().cpu(), z[0].unsqueeze(0).detach().cpu()], dim=0
-        ).cpu().numpy()
-    else:
-        print(f"[stress] pooled dim {z.size(-1)} != token dim {all_vectors.size(-1)}; "
-              f"omitting pooled vector from the similarity figure.")
-        all_vectors = all_vectors.detach().cpu().numpy()
+    all_vectors = torch.cat([all_vectors.detach().cpu(), z[0].unsqueeze(0).detach().cpu()], dim=0).cpu().numpy()
     similarity_matrix = compute_similarity_matrix(all_vectors)
 
     TARGET_NOUNS = ['keys', 'reports', 'files', 'tickets', 'documents', 'alerts']
@@ -797,76 +541,7 @@ def build_argparser():
     p.add_argument("--gat_hidden_dim", type=int, default=128, help="Hidden dim for GLOT's GAT layers.")
     p.add_argument("--num_layers", type=int, default=2, help="Number of GAT layers in GLOT.")
     p.add_argument("--jk_mode", type=str, default="cat", choices=["cat", "lstm", "max"])
-    p.add_argument("--tau", type=float, default=0.3, help="Cosine threshold for GLOT graph.")
-    # --- Stage A (HyperGLOT) graph-construction options ---
-    p.add_argument("--graph_adj", type=str, default="threshold", choices=["threshold", "knn"])
-    p.add_argument("--graph_metric", type=str, default="cosine", choices=["cosine", "poincare"],
-                   help="Edge metric: cosine (GLOT) or Poincare hyperbolic distance (Stage A).")
-    p.add_argument("--curvature", type=float, default=1.0, help="Poincare ball curvature c.")
-    p.add_argument("--tau_quantile", type=float, default=-1.0,
-                   help="Cosine twin of --rho_quantile: keep the most-similar fraction q "
-                        "of pairs. Required to density-match the BASELINE against the "
-                        "hyperbolic arms; on this synthetic data an absolute tau=0.4 "
-                        "already yields density 0.96, so without it the baseline cannot "
-                        "reach the sparse regime the hyperbolic arms occupy.")
-    p.add_argument("--graph_curvature", type=float, default=-1.0,
-                   help="Curvature used ONLY for graph construction (<0 -> --curvature). "
-                        "Stage A saturates at c=1: every token lands on the ball boundary, "
-                        "where the Poincare distance is a monotone function of the angle "
-                        "alone, so the graph becomes GLOT's cosine graph (measured edge "
-                        "Jaccard 0.9991). The usable window is sqrt(c)*mean||x|| in ~[0.8, 2.5].")
-    p.add_argument("--feature_mode", type=str, default="none",
-                   choices=["none", "l2", "unit", "center", "center_unit",
-                            "cls_root", "cls_root_unit"],
-                   help="Geometry conditioning before expmap0. Raw BERT token norms have "
-                        "cv=0.057 so the ball's depth axis is nearly constant; 'center' "
-                        "re-roots at the token mean (cv 0.154), 'cls_root' at [CLS]. The "
-                        "'_unit' variants fix mean||x||=1 so curvature is scale-free.")
-    p.add_argument("--graph_scale", type=float, default=1.0,
-                   help="Extra feature multiplier before expmap0 (equivalent to curvature "
-                        "via s = sqrt(c)).")
-    p.add_argument("--edge_weight_mode", type=str, default="binary",
-                   choices=["binary", "soft", "soft_z", "hyp", "hyp_z", "depth"],
-                   help="What the GAT is told about each edge. GLOT uses a constant 1.0. "
-                        "'hyp'/'hyp_z' keep GLOT's cosine topology but attach hyperbolic "
-                        "proximity; 'depth' attaches the SIGNED hyperbolic depth gap, the "
-                        "only asymmetric option and the one a cosine graph cannot express.")
-    p.add_argument("--edge_temp", type=float, default=0.25,
-                   help="Sigmoid temperature for soft/hyp, as a fraction of the score spread.")
-    p.add_argument("--rho", type=float, default=1.0, help="Hyperbolic-distance threshold for poincare+threshold.")
-    p.add_argument("--rho_quantile", type=float, default=-1.0,
-                   help="If in (0,1), threshold at this quantile of the observed pairwise "
-                        "Poincare distances instead of --rho. REQUIRED for a meaningful Stage A "
-                        "run: raw BERT token norms (~15) saturate expmap0 onto the ball boundary, "
-                        "so real distances land in ~[8.8, 11.8] and the default rho=1.0 yields an "
-                        "EMPTY graph. The first stress-test sweep was run that way by accident, "
-                        "which made 'Stage A' actually measure a no-graph control.")
-    p.add_argument("--knn_k", type=int, default=8, help="Neighbours when graph_adj=knn.")
-    p.add_argument("--feature_norm", type=int, default=0, help="L2-normalise tokens before mapping into the ball.")
-    # --- Stage B / C (HyperGLOT) options ---
-    p.add_argument("--hyperbolic_gnn", type=int, default=0,
-                   help="Stage C: replace the Euclidean Token-GNN with an HGCN stack.")
-    p.add_argument("--hyperbolic_readout", type=int, default=0,
-                   help="Stage B: replace the Euclidean readout with a Poincare gyro-midpoint.")
-    p.add_argument("--hyp_gnn_type", type=str, default="gcn", choices=["gcn", "gat"],
-                   help="Stage C hyperbolic conv type when hyperbolic_gnn=1: gcn (HGCN) or gat (attention).")
-    p.add_argument("--readout_clip", type=float, default=0.0,
-                   help="Stage B: clip Euclidean feature norm before the exp map (0=off).")
-    p.add_argument("--readout_scale", type=int, default=0,
-                   help="Stage B: use a learnable input scale before the exp map.")
-    p.add_argument("--learnable_curvature", type=int, default=0,
-                   help="Make the Poincare ball curvature c a trainable parameter.")
-    p.add_argument("--gnn_input_clip", type=float, default=0.0,
-                   help="Stage C: clip token norm before the entry exp map (0=off).")
-    p.add_argument("--gnn_input_scale", type=int, default=0,
-                   help="Stage C: use a learnable input scale before the entry exp map.")
-    p.add_argument("--arm", type=str, default="", help="Optional ablation-arm label recorded in results CSV.")
-    p.add_argument("--results_csv", type=str, default="", help="If set, append the stress-test result to this CSV.")
-    p.add_argument("--run_tag", type=str, default="", help="Free-form label recorded in the results CSV.")
-    p.add_argument("--git_push", type=int, default=0,
-                   help="If 1, git add+commit+push the results CSV to GitHub after each run.")
-    p.add_argument("--git_remote", type=str, default="origin", help="Git remote to push results to.")
-    p.add_argument("--git_branch", type=str, default="", help="Git branch to push results to (default: current).")
+    p.add_argument("--tau", type=float, default=0.3, help="k for kNN graphs in GLOT.")
     
     return p
 
