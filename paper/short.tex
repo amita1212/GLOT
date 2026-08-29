@@ -39,16 +39,18 @@ exactly three places, so we build a hyperbolic version of each and test them
 one at a time instead of together: a Poincar\'e graph (\textbf{A}), an Einstein
 gyro-midpoint readout (\textbf{B}), and M\"obius message passing (\textbf{C}).
 All eight combinations get the same search budget on the original model's own
-grid, with 15 shared seeds, on three GLUE tasks, a decoder backbone, and a
+grid, with 15 shared seeds, on four GLUE tasks, a decoder backbone, and a
 noise test.
 
 The components disagree. The readout (B) is clearly harmful: on STS-B it loses
 $0.75$--$1.24$ Spearman with $0$ or $1$ of $15$ seeds positive, all four arms
 that contain it survive Bonferroni, and it repeats on a decoder backbone where
-it costs $3.6$ Spearman. Message passing (C) is the only component that ever
-helps, by $+1.42$ MCC on CoLA. The graph (A) does nothing anywhere. Because B
-and C point in opposite directions, a study that reported ``hyperbolic
-pooling'' as a single switch would have averaged them to about zero.
+it costs $3.6$ Spearman. It is negative on CoLA and MRPC too, and positive only
+on RTE, which is too small to resolve any effect we measure. Message passing
+(C) is the only component that ever helps significantly, by $+1.42$ MCC on
+CoLA. The graph (A) does nothing anywhere. Because B and C point in opposite
+directions, a study that reported ``hyperbolic pooling'' as a single switch
+would have averaged them to about zero.
 
 We are cautious about C. Its gain does not reach MRPC, and the search gave it a
 much denser graph and a different network size than the baseline, so the number
@@ -238,6 +240,15 @@ here: pooling averages tokens that the graph has already smoothed, and the
 Einstein midpoint's curvature dependence pulls hardest exactly on the
 large-norm tokens that Appendix~\ref{app:calib} shows are outliers.
 
+One task disagrees, and we state it rather than bury it. On RTE all four
+B-containing arms are \emph{positive} ($+0.79$ to $+1.85$ accuracy). None is
+significant, and none could be: RTE has $277$ evaluation examples, a seed
+standard deviation of $3.36$, and a minimum detectable effect of $2.7$ points
+--- larger than any effect reported in this paper. We read RTE as uninformative
+rather than as contrary evidence, but it does mean the honest claim is ``B is
+harmful on the three tasks that can measure it'', not ``B is harmful
+everywhere''.
+
 \paragraph{Message passing is the only part that ever helps.} Stage C reaches
 $+1.42$ MCC on CoLA with $13/15$ seeds positive ($t = 4.11$, sign $p = 0.0074$)
 --- significant on both tests, though just above our Bonferroni line of
@@ -257,14 +268,15 @@ $p = 1.00$). We are running the matched comparison that isolates the geometry
 (Appendix~\ref{app:limitations}).
 
 \paragraph{On these tasks the edges are doing less than expected.} The
-graph-free arm is not worse than the baseline on any of the three tasks (CoLA
-$4/11$, STS-B $8/7$, MRPC $6/9$), and on CoLA it ranks second of eight. It is
-still a trained pooler, so this is not a claim that \textsc{Glot}'s design is
-unnecessary --- against real bag-of-tokens poolers the graph wins by $14$--$35$
-points on the authors' noise test. The narrower claim is that on GLUE, at $40$
-trials per arm, accuracy does not come from the edges. That matters here
-because it sets the bar every geometric claim must clear: Stage C clears it on
-STS-B and not on CoLA, and Stage B is significantly \emph{below} it.
+graph-free arm is not worse than the baseline on any of the four tasks (CoLA
+$4/11$, STS-B $8/7$, MRPC $6/9$, RTE $7/6$), and on CoLA it ranks second of
+eight. It is still a trained pooler, so this is not a claim that
+\textsc{Glot}'s design is unnecessary --- against real bag-of-tokens poolers the
+graph wins by $14$--$35$ points on the authors' noise test. The narrower claim
+is that on GLUE, at $40$ trials per arm, accuracy does not come from the edges.
+That matters here because it sets the bar every geometric claim must clear:
+Stage C clears it on STS-B and not on CoLA, and Stage B is significantly
+\emph{below} it.
 
 \paragraph{The graph is flat, and so is the choice of GNN.} Stage A moves
 nothing anywhere: $+0.70$ on CoLA, $+0.03$ on STS-B, $+0.04$ on MRPC, $+0.04$
@@ -302,11 +314,11 @@ over 15 seeds, so selection actively favoured it. We therefore withdraw
 density-matching as a recommendation for anyone porting this method.
 
 \paragraph{Scope, and one confound it creates.} \citet{mantri2026glot} report ten
-GLUE tasks. We report three complete (CoLA, STS-B, MRPC) with RTE still running,
-plus RoBERTa, ModernBERT, SmolLM2 and TinyLlama in supporting roles. The four we
-chose are the four \emph{smallest}, and not by accident: our design costs $495$
-runs per task, which is $22$ hours for CoLA but an estimated $38$ and $41$ days
-for QQP and MNLI, with $149$\,GB of cached states between them.
+GLUE tasks. We report four (CoLA, STS-B, MRPC, RTE), plus RoBERTa, ModernBERT,
+SmolLM2 and TinyLlama in supporting roles. The four we chose are the four
+\emph{smallest}, and not by accident: our design costs $495$ runs per task,
+which is $22$ hours for CoLA but an estimated $38$ and $41$ days for QQP and
+MNLI, with $149$\,GB of cached states between them.
 
 That leaves a confound we cannot currently rule out. Every task here has at most
 $8{,}551$ training examples, and Stage B's failure mode is variance
@@ -407,7 +419,9 @@ $t$-test because evaluation-set quantisation makes the parametric standard error
 look too small (MRPC accuracy moves in steps of $0.245$ on $408$ examples). Both
 tests must agree. Bonferroni over the $8$ arms tested against a common baseline
 gives $\alpha = 0.0063$. The minimum detectable effect at $n=15$ is $0.225$
-(STS-B), $1.153$ (CoLA), $0.317$ (MRPC) and $0.503$ (TinyLlama).
+(STS-B), $1.153$ (CoLA), $0.317$ (MRPC), $2.7$ (RTE) and $0.503$ (TinyLlama).
+RTE's figure exceeds every effect in this paper, so that task can only ever
+return a null; we report it, and draw nothing from it.
 
 \section{Selected hyper-parameters}
 \label{app:hp}
@@ -519,34 +533,36 @@ spans $7.87$ MCC on CoLA, while we measure a spread of $5.46$ across seeds at
 \begin{table}[h]
 \caption{Per-stage verdict. Entries are paired mean differences against
 \textsc{Glot}'s flat baseline on shared seeds. The last column is \emph{not} a
-fourth task: it is STS-B again on a decoder backbone, so it sits directly
-beside the BERT STS-B column and the two can be read as a replication.
-$\dagger$ significant on both the paired $t$-test and the exact sign test;
-$\ddagger$ additionally surviving Bonferroni. ``---'' was not run.}
+fifth task: it is STS-B again on a decoder backbone, so it sits beside the BERT
+STS-B column and the two read as a replication. $\dagger$ significant on both
+the paired $t$-test and the exact sign test; $\ddagger$ additionally surviving
+Bonferroni. \emph{No RTE entry is significant} --- that task has $277$
+evaluation examples and a minimum detectable effect of $2.7$ accuracy points,
+larger than any effect in this paper. ``---'' was not run.}
 \label{tab:verdict}
 \begin{center}
 \small
-\begin{tabular}{lccccl}
+\begin{tabular}{lccccccl}
 \toprule
- & \multicolumn{3}{c}{BERT-base (encoder)} & TinyLlama-1.1B (decoder) & \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-5}
-Arm & CoLA & STS-B & MRPC & STS-B & Verdict \\
-    & (MCC) & (Spear.) & (F1) & (Spear.) & \\
+ & \multicolumn{4}{c}{BERT-base (encoder)} & TinyLlama & \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-6}
+Arm & CoLA & STS-B & MRPC & RTE & STS-B & Verdict \\
+    & (MCC) & (Spear.) & (F1) & (acc.) & (Spear.) & \\
 \midrule
-A   & $+0.70$ & $+0.03$ & $+0.04$ & $+0.04$ & flat everywhere \\
-B   & $-1.26$ & $-1.07^{\ddagger}$ & $-0.33$ & --- & harmful \\
-C   & $\mathbf{+1.42}^{\dagger}$ & $+0.20$ & $-0.32$ & --- & helps on CoLA only \\
+A   & $+0.70$ & $+0.03$ & $+0.04$ & $+0.02$ & $+0.04$ & flat everywhere \\
+B   & $-1.26$ & $-1.07^{\ddagger}$ & $-0.33$ & $+0.99$ & --- & harmful \\
+C   & $\mathbf{+1.42}^{\dagger}$ & $+0.20$ & $-0.32$ & $+0.55$ & --- & CoLA only \\
 \midrule
-AB  & $-1.24$ & $-0.75^{\ddagger}$ & $-0.28$ & $-3.56^{\ddagger}$ & harmful \\
-AC  & $+0.45$ & $\mathbf{+0.24}$ & $-0.15$ & $+0.21$ & flat to slightly $+$ \\
-BC  & $+0.22$ & $-1.24^{\ddagger}$ & $-0.31$ & $-1.17^{\ddagger}$ & harmful \\
-ABC & $-0.53$ & $-0.84^{\ddagger}$ & $-0.26$ & $-4.51^{\ddagger}$ & harmful \\
+AB  & $-1.24$ & $-0.75^{\ddagger}$ & $-0.28$ & $+0.79$ & $-3.56^{\ddagger}$ & harmful \\
+AC  & $+0.45$ & $\mathbf{+0.24}$ & $-0.15$ & $+1.47$ & $+0.21$ & flat / slight $+$ \\
+BC  & $+0.22$ & $-1.24^{\ddagger}$ & $-0.31$ & $+1.85$ & $-1.17^{\ddagger}$ & harmful \\
+ABC & $-0.53$ & $-0.84^{\ddagger}$ & $-0.26$ & $+1.06$ & $-4.51^{\ddagger}$ & harmful \\
 \midrule
-\multicolumn{6}{l}{\emph{Every arm with B is negative everywhere; no arm with B
-is positive anywhere.}} \\
-\multicolumn{6}{l}{\emph{Every arm with C but not B is positive on CoLA and
+\multicolumn{7}{l}{\emph{Every arm with B is negative on CoLA, STS-B and MRPC.
+All four are positive on RTE, none significantly.}} \\
+\multicolumn{7}{l}{\emph{Every arm with C but not B is positive on CoLA and
 STS-B.}} \\
-\multicolumn{6}{l}{\emph{The two STS-B columns agree in sign on all five arms
+\multicolumn{7}{l}{\emph{The two STS-B columns agree in sign on all five arms
 run on both backbones.}} \\
 \bottomrule
 \end{tabular}
@@ -587,15 +603,15 @@ $p=0.0074$ --- significant on both tests but above $\alpha=0.0063$.
 \paragraph{The graph-free control.} We also ran an arm that deletes every edge
 ($\tau = 0.999$) while keeping the projection, the readout and the same $40$
 tuning trials. It is statistically indistinguishable from the flat baseline on
-all three tasks (CoLA $4/11$, $p=0.12$; STS-B $8/7$, $p=1.00$; MRPC $6/9$,
-$p=0.61$), and on CoLA it is numerically second of eight arms at $46.20$,
-\emph{above} the baseline's $45.37$. At this budget the edges contribute little
-to GLUE accuracy, so any claim about the graph's \emph{geometry} has to clear
-this bar first. Stage C does not on CoLA ($+0.58$, $8/7$, $p=1.00$), though it
-does on STS-B ($+0.16$, $12/3$, $p=0.035$); this is the second reason we do not
-present C as established. Stage B is significantly \emph{worse} than deleting
-the graph on CoLA ($-2.10$, $3/12$, $p=0.035$), which is the sharpest available
-statement of its harm.
+all four tasks (CoLA $4/11$, $p=0.12$; STS-B $8/7$, $p=1.00$; MRPC $6/9$,
+$p=0.61$; RTE $7/6$, $p=1.00$), and on CoLA it is numerically second of eight
+arms at $46.20$, \emph{above} the baseline's $45.37$. At this budget the edges
+contribute little to GLUE accuracy, so any claim about the graph's
+\emph{geometry} has to clear this bar first. Stage C does not on CoLA ($+0.58$,
+$8/7$, $p=1.00$), though it does on STS-B ($+0.16$, $12/3$, $p=0.035$); this is
+the second reason we do not present C as established. Stage B is significantly
+\emph{worse} than deleting the graph on CoLA ($-2.10$, $3/12$, $p=0.035$), which
+is the sharpest available statement of its harm.
 
 This does not contradict \textsc{Glot}'s own motivating result. The control here
 still trains a pooler; it is not a bag of tokens. Against genuine bag-of-tokens
@@ -904,15 +920,22 @@ did not run.
 \item \textbf{Every task we ran is small, and that may explain Stage B.} CoLA,
       STS-B, MRPC and RTE have $8{,}551$, $5{,}749$, $3{,}668$ and $2{,}490$
       training examples. Stage B hurts by amplifying seed variance, which more
-      data suppresses, so its harm may not survive at scale. We could not test
-      this: at $495$ runs per task our design costs an estimated $170$ hours for
-      SST-2, $264$ for QNLI, and $38$ and $41$ days for QQP and MNLI. A reduced
-      design --- four arms, confirmation seeds only, reusing the CoLA-selected
-      configuration --- brings SST-2 to roughly $21$ GPU-hours and is the single
-      most valuable experiment this paper is missing.
-\item \textbf{Coverage.} \citet{mantri2026glot} report ten GLUE tasks; we report
-      four, plus a synthetic noise task, and no MTEB or IMDB. Backbones: BERT,
-      RoBERTa, ModernBERT, SmolLM2, TinyLlama.
+      data suppresses, so its harm may not survive at scale --- and RTE, the
+      smallest, is the one task where B-containing arms trend positive. We could
+      not test this: at $495$ runs per task our design costs an estimated $170$
+      hours for SST-2, $264$ for QNLI, and $38$ and $41$ days for QQP and MNLI.
+      A reduced design --- four arms, confirmation seeds only, reusing the
+      CoLA-selected configuration --- brings SST-2 to roughly $21$ GPU-hours and
+      is the single most valuable experiment this paper is missing.
+\item \textbf{RTE is underpowered and contributes nothing.} With $277$
+      evaluation examples and a seed standard deviation of $3.36$, its minimum
+      detectable effect is $2.7$ accuracy points. All seven hyperbolic arms are
+      nominally positive there and not one is significant. We include it for
+      completeness and base no conclusion on it.
+\item \textbf{Coverage.} \citet{mantri2026glot} report ten GLUE tasks on six
+      backbones, plus IMDB and seven MTEB tasks; we report four GLUE tasks on
+      BERT, two on RoBERTa, one on TinyLlama, plus a synthetic noise task, and
+      no MTEB or IMDB.
 \end{itemize}
 
 \end{document}
