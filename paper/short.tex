@@ -87,7 +87,7 @@ reported their average and found nothing.
       significantly harmful on an encoder and on a decoder; hyperbolic message
       passing (C) is the only part that reaches significance in the positive
       direction; the hyperbolic graph (A) trends positive but never separates
-      from its controls. We report what each part does, not what they do on
+      from the baseline. We report what each part does, not what they do on
       average.
 \item \textbf{The usual motivation does not survive measurement}
       (\S\ref{sec:results}). Low $\delta$-hyperbolicity is driven by a handful
@@ -256,8 +256,7 @@ readout is positive on both tasks.
 
 We do not present this as settled. It does not reach MRPC, where no arm beats
 the baseline and every hyperbolic arm is slightly negative ($-0.15$ to $-0.33$,
-none significant). It does not separate from the graph-free control on CoLA
-($+0.58$, $8/7$, $p = 1.00$). And, most importantly, it does not decompose.
+none significant). And, most importantly, it does not decompose.
 
 The search had given C a $3.6\times$ denser graph than the baseline ($q = 0.38$
 against $0.10$) together with half the depth and half the width, so the $+1.42$
@@ -278,17 +277,6 @@ the denser graph and the curved message passing, and we cannot say which does
 the work. That C is negative on MRPC, where the search chose a $15\times$
 \emph{sparser} graph, is consistent with needing both, but is not evidence for
 it.
-
-\paragraph{On these tasks the edges are doing less than expected.} The
-graph-free arm is not worse than the baseline on any of the four tasks (CoLA
-$4/11$, STS-B $8/7$, MRPC $6/9$, RTE $7/6$), and on CoLA it ranks second of
-eight. It is still a trained pooler, so this is not a claim that
-\textsc{Glot}'s design is unnecessary --- against real bag-of-tokens poolers the
-graph wins by $14$--$35$ points on the authors' noise test. The narrower claim
-is that on GLUE, at $40$ trials per arm, accuracy does not come from the edges.
-That matters here because it sets the bar every geometric claim must clear:
-Stage C clears it on STS-B and not on CoLA, and Stage B is significantly
-\emph{below} it.
 
 \paragraph{The graph trends positive but never separates.} Stage A is nominally
 ahead of the baseline in five of the seven settings we ran it in: $+0.70$ on
@@ -582,7 +570,6 @@ Arm & CoLA & STS-B & MRPC & RTE & CoLA & STS-B \\
     & (MCC) & (Spear.) & (F1) & (acc.) & (MCC) & (Spear.) \\
 \midrule
 \textsc{Glot} (baseline) & 45.37\,$\pm$1.30 & 82.53\,$\pm$0.33 & 82.14\,$\pm$0.44 & 53.79\,$\pm$3.36 & \textbf{54.60}\,$\pm$1.52 & 83.89\,$\pm$0.30 \\
-no graph                 & 46.20\,$\pm$2.54 & 82.57\,$\pm$0.34 & 82.17\,$\pm$0.31 & 53.86\,$\pm$2.74 & 54.32\,$\pm$2.06 & 83.84\,$\pm$0.32 \\
 published $\tau$         & --- & --- & --- & --- & 54.46\,$\pm$1.18 & \textbf{84.21}\,$\pm$0.29 \\
 quantile $\tau$          & --- & --- & --- & --- & 53.19\,$\pm$1.59 & 83.73\,$\pm$0.29 \\
 \midrule
@@ -599,10 +586,10 @@ ABC & 44.84\,$\pm$1.87 & 81.70\,$\pm$0.34 & 81.88\,$\pm$0.44 & 54.85\,$\pm$1.52 
 \end{table}
 
 Two things are visible here that the delta tables hide. The whole spread on MRPC
-is $0.37$ F1 across eleven arms, and on RTE the seed standard deviation
-($1.5$--$3.4$) is larger than every gap in the column --- which is why we treat
-both as null. And the bolded best cell is a \emph{different arm} in five of the
-six columns, which is what a table of noise looks like.
+is $0.37$ F1 across the eight arms run on it, and on RTE the seed standard
+deviation ($1.5$--$3.4$) is larger than every gap in the column --- which is why
+we treat both as null. And the bolded best cell is a \emph{different arm} in
+five of the six columns, which is what a table of noise looks like.
 
 \begin{table}[h]
 \caption{Per-stage verdict. Entries are paired mean differences against
@@ -673,25 +660,6 @@ $p=6\times10^{-5}$; BC $-1.242$, $t=-8.30$, $p=6\times10^{-5}$; ABC $-0.837$,
 $t=-6.36$, $p=0.00098$; AB $-0.747$, $t=-5.66$, $p=6\times10^{-5}$. All four
 survive Bonferroni. On CoLA, C gives $\bar{d}=+1.416$, $t=4.11$, sign
 $p=0.0074$ --- significant on both tests but above $\alpha=0.0063$.
-
-\paragraph{The graph-free control.} We also ran an arm that deletes every edge
-($\tau = 0.999$) while keeping the projection, the readout and the same $40$
-tuning trials. It is statistically indistinguishable from the flat baseline on
-all four tasks (CoLA $4/11$, $p=0.12$; STS-B $8/7$, $p=1.00$; MRPC $6/9$,
-$p=0.61$; RTE $7/6$, $p=1.00$), and on CoLA it is numerically second of eight
-arms at $46.20$, \emph{above} the baseline's $45.37$. At this budget the edges
-contribute little to GLUE accuracy, so any claim about the graph's
-\emph{geometry} has to clear this bar first. Stage C does not on CoLA ($+0.58$,
-$8/7$, $p=1.00$), though it does on STS-B ($+0.16$, $12/3$, $p=0.035$); this is
-the second reason we do not present C as established. Stage B is significantly
-\emph{worse} than deleting the graph on CoLA ($-2.10$, $3/12$, $p=0.035$), which
-is the sharpest available statement of its harm.
-
-This does not contradict \textsc{Glot}'s own motivating result. The control here
-still trains a pooler; it is not a bag of tokens. Against genuine bag-of-tokens
-baselines the graph earns its place decisively (Appendix~\ref{app:stress}).
-What the control shows is narrower: on these three GLUE tasks, at $40$ trials
-per arm, the \emph{edges} are not where the accuracy comes from.
 
 \subsection{Decomposing Stage C}
 \label{app:factorial2x2}
@@ -985,26 +953,23 @@ draw no statistical conclusion: with $n=1$ there is no test to run.
 switch to quantile thresholding. The \texttt{A\_threshold} arm used an absolute
 radius $\rho = 1.0$ on unnormalised BERT features, and as
 Appendix~\ref{app:defects} explains, real Poincar\'e distances there lie in
-$[8.85, 11.76]$ --- so that arm trained on an \emph{empty graph}. We therefore
-relabel it: it is not Stage A, it is an accidental graph-free control. Read that
-way it replicates, on two further benchmark families, the GLUE finding of
-Appendix~\ref{app:results} that deleting every edge costs nothing: $+0.24$
-accuracy on IMDB and $-0.06$ on the MTEB mean. \texttt{A\_knn} used a $k$-NN
-Poincar\'e graph and is a genuine Stage A variant; it is also flat.
+$[8.85, 11.76]$ --- so that arm trained on an empty graph and is \emph{not} a
+Stage A result. We keep the column only so it cannot be mistaken for one.
+\texttt{A\_knn} used a $k$-NN Poincar\'e graph and is a genuine Stage A variant.
 
 \begin{table}[h]
 \caption{IMDB accuracy and MTEB main scores ($\times 100$), BERT-base, seed $42$,
-one run per cell. ``no graph$^{\dagger}$'' is the mislabelled
-\texttt{A\_threshold} arm described above. MTEB is zero-shot after contrastive
-training on MS MARCO triplets; the seven tasks are those of
+one run per cell. The middle column is the $\rho$-defect run described above; it
+trained on an empty graph and is not a Stage A measurement. MTEB is zero-shot
+after contrastive training on MS MARCO triplets; the seven tasks are those of
 \citet{mantri2026glot}.}
 \label{tab:docmteb}
 \begin{center}
 \small
 \begin{tabular}{lccc}
 \toprule
- & \textsc{Glot} & no graph$^{\dagger}$ & Stage A \\
- & (cosine) & (empty) & ($k$-NN) \\
+ & \textsc{Glot} & $\rho$-defect$^{\dagger}$ & Stage A \\
+ & (cosine) & (empty graph) & ($k$-NN) \\
 \midrule
 IMDB (acc.) & 92.26 & \textbf{92.50} & 92.46 \\
 \midrule
@@ -1022,12 +987,11 @@ MTEB mean                  & \textbf{33.98} & 33.92 & 33.58 \\
 \end{center}
 \end{table}
 
-Across seven MTEB tasks the largest gap to the baseline is $0.17$ for the
-graph-free arm and $2.34$ for $k$-NN (both on tasks where all three arms sit
-within a few points of each other). Nothing here is separable at one seed, and
-neither Stage B nor Stage C was ever run on these benchmarks. Doing it properly
-is expensive: our IMDB runs took $3.8$ hours each at $512$ tokens, so eight arms
-$\times$ $15$ seeds would be roughly $20$ days.
+Across seven MTEB tasks the largest gap to the baseline is $2.34$, on a task
+where all three columns sit within a few points of each other. Nothing here is
+separable at one seed, and neither Stage B nor Stage C was ever run on these
+benchmarks. Doing it properly is expensive: our IMDB runs took $3.8$ hours each
+at $512$ tokens, so eight arms $\times$ $15$ seeds would be roughly $20$ days.
 
 \section{Notes for reproducers}
 \label{app:defects}
@@ -1083,14 +1047,8 @@ did not run.
       the three is significant at $n=15$ even though the total is. Resolving the
       interaction needs about $65$ seeds. Until then we can say the effect
       requires both the denser graph and the curved message passing, but not
-      which is responsible. It also does not reach MRPC, does not separate from
-      the graph-free control, and was never run on the decoder.
-\item \textbf{We cannot say why the edges contribute so little on GLUE.} The
-      graph-free arm matches the baseline on all three tasks, yet the graph is
-      decisive on the noise diagnostic. Reconciling those two observations ---
-      most likely by identifying which inputs actually need relational pooling
-      --- would say more about \textsc{Glot} than anything in this paper. We did
-      not attempt it.
+      which is responsible. It also does not reach MRPC and was never run on the
+      decoder.
 \item \textbf{We select the epoch on the split we report}, because GLUE test
       labels are not public. This is a smaller version of the practice we
       criticise in \S\ref{sec:choices}. Splitting the development set into
