@@ -625,6 +625,20 @@ Euclidean hyper-parameters, produced a result we later had to retract. Both
 points cost us real experiments, and we report them so that the next study of
 this kind does not repeat them.
 
+\subsubsection*{Reproducibility statement}
+
+All confirmation-stage results use the fixed seed set $\{1,\dots,15\}$, shared
+across every arm so that comparisons are paired; tuning uses a single held-out
+seed disjoint from that set. Every run appends one row to a per-campaign CSV
+recording the full configuration, the realised edge density, the per-epoch
+metrics and the wall-clock time. These logs are released unmodified, including
+runs that crashed or produced degenerate graphs, and the analysis scripts that
+produce every table in this paper read those CSVs directly and are released
+alongside them. Hidden-state caches are built once, before any arm runs; all
+reported runs then execute against a warm cache. That ordering is load-bearing
+rather than an optimisation --- see Appendix~\ref{app:defects} --- and any
+reproduction that skips it will shift results by several points on CoLA.
+
 \bibliography{references}
 \bibliographystyle{iclr2026_conference}
 
@@ -916,6 +930,82 @@ paper.
       Table~\ref{tab:density}, which is what confirms the correction. Any
       density we quote is re-measured with the standalone instrument described
       in Table~\ref{tab:density}, never taken from training telemetry.
+\end{itemize}
+
+%-------------------------------------------------------------------------
+\section{Structural (non-geometric) graph variants}
+\label{app:structural}
+
+Since CoLA, MRPC and RTE are flat for every \emph{geometric} arm, we also asked
+whether a \emph{structural} prior helps where a similarity prior does not:
+positional edges connecting tokens with $|i-j| \leq w$, positional-only graphs,
+their union with Stage A, and $k$-NN graphs.
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+Arm & trials & best & mean \\
+\midrule
+baseline           & 10 & 45.32 & 43.42 \\
+POS                & 10 & 47.08 & 44.50 \\
+POS\_ONLY          & \phantom{0}4 & 46.80 & 44.38 \\
+A\_POS             & 10 & 44.87 & 43.48 \\
+KNN                & \phantom{0}4 & 45.32 & 44.84 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{These are tuning-stage maxima and are not results.} At CoLA's
+confirmation-stage noise level ($\sigma = 2.09$) the expected inflation of a
+best-of-10 maximum is $\approx 3.22$ MCC, which exceeds every gap in the table
+--- including POS's apparent $+1.76$ lead. We report the numbers for
+completeness and because the arms are implemented and released, but we draw no
+conclusion from them. Confirming the structural arms on 15 paired seeds is the
+most obvious extension of this work that we did not run.
+
+%-------------------------------------------------------------------------
+\section{Limitations}
+\label{app:limitations}
+
+\begin{itemize}
+\itemsep1pt
+\item \textbf{Stage C is a direction, not a result.} Its CoLA gain does not
+      survive referencing against the \texttt{no\_graph} control ($8/7$ seeds,
+      sign $p=1.00$), does not extend to MRPC, and was never run on the decoder
+      backbone. A density-matched Euclidean control at $n \geq 30$ would settle
+      it; we did not run one.
+\item \textbf{Our own numbers select the epoch on the split we report}, because
+      GLUE test labels are not public. This is a smaller-scale version of the
+      practice we characterise in \S\ref{sec:repro}: we select over epochs and
+      configurations, the original additionally selects over $\tau$ at one
+      seed. Splitting the development set into selection and reporting halves
+      would remove the objection entirely, and we regard it as the single most
+      valuable improvement to this protocol.
+\item \textbf{One reproduction residual is unexplained.} At the authors' seed
+      and grid we exceed the published CoLA and RTE numbers, but STS-B remains
+      $0.87$ short under every estimator we tried. We tested the leading
+      hypothesis --- that the released README trains differently from the paper
+      (3 vs.\ 2 epochs, hidden $256$ vs.\ $128$, $\tau = 0.8$ vs.\ $0.6$) ---
+      and ruled it out (Appendix~\ref{app:factorial}). The residual stands.
+\item \textbf{The scale factorial is underpowered.} At $n=5$ the exact sign
+      test cannot fall below $p = 0.0625$, so no contrast in
+      Table~\ref{tab:fix} can meet the both-tests criterion we impose
+      elsewhere. The median-rescaling effect is directionally positive on both
+      ModernBERT layers but not established.
+\item \textbf{Non-Euclidean layers may need structure-aware optimisation.}
+      Structured and hyperbolic layers are known to underperform when trained
+      at learning rates and initialisations tuned for dense Euclidean layers.
+      We addressed the learning-rate half of this objection by giving every arm
+      the full grid --- and every arm, including the baseline, selected
+      $\mathrm{lr} = 2\times10^{-4}$ --- but we did not implement per-manifold
+      Riemannian optimisation or curvature-aware initialisation. This is the
+      strongest available objection to our negative result on Stage B, and we
+      state it rather than only acknowledging it.
+\item \textbf{Scope.} Results cover BERT, RoBERTa, ModernBERT, SmolLM2 and
+      TinyLlama on CoLA, STS-B, MRPC and a synthetic stress task. RTE was still
+      running at submission. We report no MTEB or IMDB results, which the
+      original paper does.
 \end{itemize}
 
 \end{document}
