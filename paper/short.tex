@@ -164,7 +164,8 @@ We run all eight combinations of A, B and C.
 \label{sec:choices}
 
 Every arm is frozen-backbone, 2 epochs, Adam, batch $32$; only the pooler
-trains. Tuning draws $40$ configurations at one held-out seed. Confirmation
+trains. Tuning draws $40$ configurations at one held-out seed ($10$ on the
+decoder, where a run costs four times as much). Confirmation
 re-runs the winner on the fixed seed set $\{1,\dots,15\}$, shared across arms,
 so every comparison is paired. We report the exact two-sided sign test beside
 the paired $t$-test and call something significant only when both agree, with a
@@ -178,8 +179,12 @@ width pinned at values picked for a \emph{flat} pooler. That handed the baseline
 an advantage and produced a false positive we retract in
 Appendix~\ref{app:narrow}: Stage A on STS-B looked like $+0.223$ Spearman with
 $15/15$ seeds and $t(14)=6.20$, and collapsed to $+0.028$ once the baseline was
-allowed to pick $K=4$. Everything reported here uses \textsc{Glot}'s full grid
-applied identically to all arms: $40$ trials each, $15$ seeds, $990$ runs.
+allowed to pick $K=4$. Every BERT and RoBERTa campaign here uses \textsc{Glot}'s
+full grid applied identically to all arms: $40$ trials each, $15$ seeds, $495$
+runs per task and $1{,}980$ across the four GLUE tasks. What has to be equal is
+the budget \emph{within} a campaign, not the same number everywhere --- the
+decoder gave every arm $10$ trials rather than $40$, for cost
+(Appendix~\ref{app:protocol}).
 
 \paragraph{The search really does use that freedom.} The learning rate does not
 settle on one value. On STS-B all nine arms chose $2\times10^{-4}$; on CoLA
@@ -418,9 +423,14 @@ Frozen backbone, 2 epochs, Adam, weight decay searched, batch size $32$; the
 pooler is the only trained component. Confirmation uses seeds $\{1,\dots,15\}$
 shared across arms; tuning uses one disjoint held-out seed.
 
-\paragraph{Matched budget.} Every arm gets $40$ trials in the wide campaign
-($10$ in the earlier graph-only ones). The cosine baseline has a smaller native
-space, so we widen its grid to keep selection pressure equal. Equal trials is
+\paragraph{Matched budget.} Trials per arm are $40$ in the BERT wide campaigns
+and on RoBERTa, and $10$ on the decoder and in the earlier graph-only campaigns.
+Every arm inside a given campaign gets the same number, which is the property
+the paired tests actually need. The decoder gets fewer because a TinyLlama run
+costs roughly $4\times$ a BERT run; its arms were therefore selected from a
+coarser search, so its entries should be read as paired deltas within that
+campaign and not compared against the BERT block. The cosine baseline has a
+smaller native space, so we widen its grid to keep selection pressure equal. Equal trials is
 not equal \emph{coverage}: $40$ trials cover $6.2\%$ of a $648$-point space but
 under $0.01\%$ of ABC's $4.98\times10^{7}$-point space. This asymmetry works
 against the complex arms, and we note it as a caveat against our own negative
@@ -837,9 +847,14 @@ Backbone (layer) & Rescaling & $\tau=0.6$ (pub.) & $q=0.05$ \\
 \section{Decoder backbone}
 \label{app:decoder}
 
-TinyLlama-1.1B on STS-B, $n=15$ shared seeds, chosen over SmolLM2 on measured
-geometry ($0.073$ density against BERT's $0.103$, whereas SmolLM2 sits at
-$0.741$). Minimum detectable effect $0.503$.
+TinyLlama-1.1B on STS-B, $10$ tuning trials per arm and $n=15$ shared
+confirmation seeds. The trial budget is lower than the BERT campaigns' $40$
+because a run here costs about four times as much; it is identical across the
+arms in this table, which is what the paired tests require, but it does mean
+these arms were selected from a coarser search than their BERT counterparts.
+Backbone chosen over SmolLM2 on measured geometry ($0.073$ density against
+BERT's $0.103$, whereas SmolLM2 sits at $0.741$). Minimum detectable effect
+$0.503$.
 
 \begin{center}
 \small
