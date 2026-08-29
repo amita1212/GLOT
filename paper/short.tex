@@ -301,9 +301,19 @@ MCC and survives Bonferroni. It also won its tuning stage before finishing last
 over 15 seeds, so selection actively favoured it. We therefore withdraw
 density-matching as a recommendation for anyone porting this method.
 
-\paragraph{Scope.} These results are BERT on CoLA, STS-B and MRPC, plus RoBERTa,
-ModernBERT, SmolLM2 and TinyLlama in supporting roles. RTE was still running at
-submission. We report no MTEB or IMDB numbers, which the original paper does.
+\paragraph{Scope, and one confound it creates.} \citet{mantri2026glot} report ten
+GLUE tasks. We report three complete (CoLA, STS-B, MRPC) with RTE still running,
+plus RoBERTa, ModernBERT, SmolLM2 and TinyLlama in supporting roles. The four we
+chose are the four \emph{smallest}, and not by accident: our design costs $495$
+runs per task, which is $22$ hours for CoLA but an estimated $38$ and $41$ days
+for QQP and MNLI, with $149$\,GB of cached states between them.
+
+That leaves a confound we cannot currently rule out. Every task here has at most
+$8{,}551$ training examples, and Stage B's failure mode is variance
+amplification --- a quantity that shrinks as data grows. Our Stage B negative
+may therefore be a small-data effect rather than a property of the geometry.
+SST-2 ($67$k examples, $7.9\times$ CoLA) is the cheapest test that would settle
+it, and we did not run it. We also report no MTEB or IMDB numbers.
 
 %-------------------------------------------------------------------------
 \section{Conclusion}
@@ -885,9 +895,18 @@ did not run.
       did not implement per-manifold Riemannian optimisation or curvature-aware
       initialisation. This is the strongest available objection to our Stage B
       negative, and we state it rather than merely acknowledging it.
-\item \textbf{Scope.} BERT, RoBERTa, ModernBERT, SmolLM2 and TinyLlama on CoLA,
-      STS-B, MRPC and a synthetic noise task. RTE was still running at
-      submission. No MTEB or IMDB, which the original paper reports.
+\item \textbf{Every task we ran is small, and that may explain Stage B.} CoLA,
+      STS-B, MRPC and RTE have $8{,}551$, $5{,}749$, $3{,}668$ and $2{,}490$
+      training examples. Stage B hurts by amplifying seed variance, which more
+      data suppresses, so its harm may not survive at scale. We could not test
+      this: at $495$ runs per task our design costs an estimated $170$ hours for
+      SST-2, $264$ for QNLI, and $38$ and $41$ days for QQP and MNLI. A reduced
+      design --- four arms, confirmation seeds only, reusing the CoLA-selected
+      configuration --- brings SST-2 to roughly $21$ GPU-hours and is the single
+      most valuable experiment this paper is missing.
+\item \textbf{Coverage.} \citet{mantri2026glot} report ten GLUE tasks; we report
+      four, plus a synthetic noise task, and no MTEB or IMDB. Backbones: BERT,
+      RoBERTa, ModernBERT, SmolLM2, TinyLlama.
 \end{itemize}
 
 \end{document}
