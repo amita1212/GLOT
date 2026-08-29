@@ -244,32 +244,57 @@ ratio, in any work motivated by measured hyperbolicity.
 seed of $42$'', and their Table 8 reports the best $\tau$ per task on the
 development split they also report. Every published quality number is therefore
 a single draw, maximised over a search. We report means over 15 seeds. These
-are not the same estimator, and the difference explains the apparent gap
+are not the same estimator, and Table~\ref{tab:estimator} shows that the choice
+of estimator alone moves CoLA by nearly $5$ MCC --- more than enough to account
+for the apparent gap.
+
+\begin{table}[t]
+\caption{One method, four estimators, on CoLA. Each row is the \emph{same}
+pooler; only the way the score is computed changes. A dash means the knob does
+not apply --- a single-seed row has nothing to average over, and a fixed-config
+row has nothing to select over. Reading down, the published value sits between
+our mean and our maximum, and the row that most closely matches how it was
+computed (single seed, best of a configuration search) \emph{exceeds} it. Only
+the first row is from \citet{mantri2026glot}.}
+\label{tab:estimator}
+\begin{center}
+\small
+\begin{tabular}{lllc}
+\toprule
+Seeds & Aggregated & Selected over & CoLA MCC \\
+\midrule
+\multicolumn{4}{l}{\emph{Published \citep{mantri2026glot}}} \\
+1 (seed 42) & --- & best $\tau$ of 3 & 47.49 \\
+\midrule
+\multicolumn{4}{l}{\emph{Ours, same method}} \\
+15 & mean & --- & 45.37 \\
+15 & max  & --- & 48.17 \\
+1 (seed 42) & --- & best of 40 configs & \textbf{50.16} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Matching their estimator directly --- their seed, their grid, $78$
+configurations per task --- reproduces and exceeds two of three tasks
 (Table~\ref{tab:repro}).
 
 \begin{table}[t]
-\caption{The apparent CoLA reproduction gap is an estimator artifact, not a
-performance difference. \emph{Left:} the first row is \textsc{Glot}'s published
-value --- one seed, maximised over their $\tau$ grid --- and is the reference
-against which the $\Delta$ column is measured; the three rows below are ours.
-They are not all the same runs: rows two and three summarise the $15$
-confirmation seeds, while the last is the best of $40$ configurations at
-\textsc{Glot}'s own seed. As the estimator moves from an average toward a
-maximum the gap closes and then reverses, which is the point --- a published
-best-of-grid single seed and a $15$-seed mean are not comparable quantities.
-\emph{Right:} matching their estimator exactly ($78$ configurations at seed
-$42$) reproduces and exceeds two of three tasks.}
+\caption{Matched-estimator comparison. Both columns are the best score at
+\textsc{Glot}'s own seed ($42$) over \textsc{Glot}'s own grid, $78$
+configurations per task, so the two are computed the same way. The STS-B
+residual is unexplained; we test and rule out the leading hypothesis in
+Appendix~\ref{app:factorial}.}
 \label{tab:repro}
 \begin{center}
 \small
-\begin{tabular}{lcc@{\hskip 1.5em}lccc}
+\begin{tabular}{lccc}
 \toprule
-Estimator (CoLA) & MCC & $\Delta$ & Task & ours & pub. & $\Delta$ \\
+Task & ours & published & $\Delta$ \\
 \midrule
-Published (1 seed, best $\tau$)  & 47.49 & \emph{ref} & CoLA  & \textbf{50.52} & 47.49 & $+3.03$ \\
-Mean, 15 seeds \emph{(ours)}     & 45.37 & $-2.12$ & RTE   & \textbf{59.57} & 59.21 & $+0.36$ \\
-Max, 15 seeds \emph{(ours)}      & 48.17 & $+0.68$ & STS-B & 82.99 & 83.86 & $-0.87$ \\
-Max, 40 configs at seed 42       & 50.16 & $+2.67$ &       &       &       &         \\
+CoLA (MCC)       & \textbf{50.52} & 47.49 & $+3.03$ \\
+RTE (acc.)       & \textbf{59.57} & 59.21 & $+0.36$ \\
+STS-B (Spearman) & 82.99 & 83.86 & $-0.87$ \\
 \bottomrule
 \end{tabular}
 \end{center}
