@@ -52,9 +52,10 @@ CoLA. The graph (A) does nothing anywhere. Because B and C point in opposite
 directions, a study that reported ``hyperbolic pooling'' as a single switch
 would have averaged them to about zero.
 
-We are cautious about C. Its gain does not reach MRPC, and the search gave it a
-much denser graph and a different network size than the baseline, so the number
-mixes geometry with those choices.
+We are cautious about C. Its gain does not reach MRPC, and it does not survive
+being taken apart: a $2\times2$ that toggles curvature and the graph/architecture
+configuration separately finds that neither factor alone reproduces it, and
+that no single component is significant at $15$ seeds.
 
 We also question the premise. The usual reason to go hyperbolic is a low
 measured $\delta$-hyperbolicity. That measure is an artifact of a few
@@ -256,16 +257,30 @@ $0.0063$. On STS-B, A${+}$C is the best of the nine arms ($+0.24$) and C is
 second ($+0.20$). Every arm with the hyperbolic GNN and \emph{without} the
 readout is positive on both tasks.
 
-We do not present this as settled, for two reasons. It does not reach MRPC,
-where no arm beats the baseline and every hyperbolic arm is slightly negative
-($-0.15$ to $-0.33$, none significant). And the search did not give C the same
-graph or the same network as the baseline: it chose a threshold of $q = 0.38$
-against the baseline's $0.10$, a $3.6\times$ denser graph, together with half
-the depth and half the width. The $+1.42$ therefore mixes geometry with those
-choices. It also fails the sharpest control we have: an arm that deletes every
-edge scores $46.20$ on CoLA, and C does not separate from it ($+0.58$, $8/7$,
-$p = 1.00$). We are running the matched comparison that isolates the geometry
-(Appendix~\ref{app:limitations}).
+We do not present this as settled. It does not reach MRPC, where no arm beats
+the baseline and every hyperbolic arm is slightly negative ($-0.15$ to $-0.33$,
+none significant). It does not separate from the graph-free control on CoLA
+($+0.58$, $8/7$, $p = 1.00$). And, most importantly, it does not decompose.
+
+The search had given C a $3.6\times$ denser graph than the baseline ($q = 0.38$
+against $0.10$) together with half the depth and half the width, so the $+1.42$
+mixed geometry with those choices. We ran the $2\times2$ that separates them on
+the same $15$ seeds (Table~\ref{tab:factorial}). Hyperbolic message passing on
+the baseline's \emph{own} graph and architecture gains $+0.40$ ($8/7$,
+$p=1.00$). The denser graph and smaller network with \emph{Euclidean} message
+passing gains $-0.01$ ($10/5$, $p=0.30$). The remaining $+1.03$ is an
+interaction --- and it too is not significant ($t=1.35$, $10/5$, $p=0.30$).
+
+So the decomposition is exact and useless: the three components sum to $+1.416$,
+the total is significant, and no part of it is. The component contrasts carry
+$2$--$3\times$ the variance of the total (sd $1.75$, $2.55$, $2.95$ against
+$1.33$), because each differences two independently trained cells. Resolving the
+interaction at $80\%$ power would need roughly $65$ seeds; we ran $15$. We
+therefore report Stage C's gain as real but \emph{unattributed}: it needs both
+the denser graph and the curved message passing, and we cannot say which does
+the work. That C is negative on MRPC, where the search chose a $15\times$
+\emph{sparser} graph, is consistent with needing both, but is not evidence for
+it.
 
 \paragraph{On these tasks the edges are doing less than expected.} The
 graph-free arm is not worse than the baseline on any of the four tasks (CoLA
@@ -671,6 +686,67 @@ baselines the graph earns its place decisively (Appendix~\ref{app:stress}).
 What the control shows is narrower: on these three GLUE tasks, at $40$ trials
 per arm, the \emph{edges} are not where the accuracy comes from.
 
+\subsection{Decomposing Stage C}
+\label{app:factorial2x2}
+
+Stage C's selected configuration differed from the baseline's in two ways at
+once: a $3.6\times$ denser graph ($q=0.38$ against $0.10$) and a smaller network
+($2$ layers of width $128$ against $4$ of $256$). We therefore ran the
+$2\times2$ that crosses \emph{message-passing geometry} with
+\emph{graph-and-architecture configuration}, on the same $15$ seeds. Two cells
+already existed; the two off-diagonal cells are new runs, written to a separate
+results file so the released campaign logs are untouched. The hyperbolic cells
+use C's own tuned curvature settings ($c = 4.0$, HGAT, input clip $0.7$), which
+is the choice most favourable to C.
+
+\begin{table}[h]
+\caption{Density $\times$ curvature factorial, CoLA MCC, mean $\pm$ sd over the
+$15$ shared seeds. Realised edge density was verified per cell: $0.0999$ in the
+base-config row, $0.3759$ in the C-config row, so the columns really are
+density-matched.}
+\label{tab:factorial}
+\begin{center}
+\small
+\begin{tabular}{lcc}
+\toprule
+ & Euclidean MP & hyperbolic MP \\
+\midrule
+base config ($q{=}0.10$, $K{=}4$, $h{=}256$) & 45.37\,$\pm$1.30 & 45.77\,$\pm$1.42 \\
+C config ($q{=}0.38$, $K{=}2$, $h{=}128$)    & 45.36\,$\pm$2.19 & \textbf{46.78}\,$\pm$0.79 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\caption{Exact decomposition of Stage C's headline gain, paired over $15$ seeds.
+The three components sum to the total. The total is significant on both tests;
+none of its parts is.}
+\label{tab:decomp}
+\begin{center}
+\small
+\begin{tabular}{lrrrrl}
+\toprule
+Component & $\Delta$ & sd & $t$ & p/n & sign $p$ \\
+\midrule
+geometry alone (at base config)      & $+0.400$ & 1.75 & $0.88$ & \phantom{0}8/7 & 1.0000 \\
+configuration alone (Euclidean MP)   & $-0.012$ & 2.55 & $-0.02$ & 10/5 & 0.3018 \\
+interaction                          & $+1.028$ & 2.95 & $1.35$ & 10/5 & 0.3018 \\
+\midrule
+\textbf{total} (C $-$ baseline)      & $\mathbf{+1.416}$ & 1.33 & $\mathbf{4.11}$ & \textbf{13/2} & \textbf{0.0074} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Each component differences two independently trained cells, so it inherits both
+their variances; that is why the parts are noisier than the whole. At the
+observed effect and spread, detecting the interaction at $80\%$ power would take
+about $65$ seeds. This is the cleanest illustration we have of a general
+hazard: a significant end-to-end improvement can be genuinely irreducible at the
+sample size that established it, and reporting any one of these components as
+``the'' explanation would have been unsupported.
+
 \section{Porting to other backbones}
 \label{app:calib}
 
@@ -994,14 +1070,14 @@ did not run.
 
 \begin{itemize}
 \itemsep1pt
-\item \textbf{Stage C's gain is not a clean geometry effect.} The search gave C
-      a $3.6\times$ denser graph than the baseline ($q = 0.38$ against $0.10$),
-      half the depth and half the width, so $+1.42$ MCC mixes curvature with
-      those choices. It also does not separate from the graph-free control
-      ($+0.58$, $8/7$, $p=1.00$). We are running the $2\times2$ that holds graph
-      and architecture fixed and toggles only the message passing; until it
-      lands, C is a direction, not a result. The gain does not reach MRPC and
-      was never run on the decoder.
+\item \textbf{Stage C's gain is real but unattributed.} The $2\times2$ of
+      Table~\ref{tab:factorial} decomposes $+1.42$ MCC exactly into geometry
+      ($+0.40$), configuration ($-0.01$) and interaction ($+1.03$), and none of
+      the three is significant at $n=15$ even though the total is. Resolving the
+      interaction needs about $65$ seeds. Until then we can say the effect
+      requires both the denser graph and the curved message passing, but not
+      which is responsible. It also does not reach MRPC, does not separate from
+      the graph-free control, and was never run on the decoder.
 \item \textbf{We cannot say why the edges contribute so little on GLUE.} The
       graph-free arm matches the baseline on all three tasks, yet the graph is
       decisive on the noise diagnostic. Reconciling those two observations ---
