@@ -27,41 +27,38 @@ Paper under double-blind review}
 \maketitle
 
 \begin{abstract}
-Hyperbolic space stores tree-like data with less distortion than flat space.
-Token states are often called tree-like. Together these have motivated
-hyperbolic versions of many models. We test that reasoning on one model,
-carefully.
+Hyperbolic space represents tree-like structure with less distortion than flat
+space, and transformer token states are often described as tree-like. That
+pairing has motivated hyperbolic versions of many models. We ask whether it
+actually helps, on one architecture, under controlled conditions.
 
 Our subject is \textsc{Glot} \citep{mantri2026glot}, a sentence pooler that
 builds a graph over the tokens of a frozen language model, refines it with a
-GNN, and sums it into one vector with a learned readout. Geometry enters in
-exactly three places, so we build a hyperbolic version of each and test them
-one at a time instead of together: a Poincar\'e graph (\textbf{A}), an Einstein
-gyro-midpoint readout (\textbf{B}), and M\"obius message passing (\textbf{C}).
-All eight combinations get the same search budget on the original model's own
-grid, with 15 shared seeds, on four GLUE tasks, a decoder backbone, and a
-noise test.
+GNN, and aggregates it into a single vector. Geometry enters in exactly three
+places --- how the graph is built, how messages combine, how states are pooled
+--- so we replace each independently and give all eight combinations the same
+search budget over fifteen shared seeds.
 
-The components disagree. The readout (B) is clearly harmful: on STS-B it loses
-$0.75$--$1.24$ Spearman with $0$ or $1$ of $15$ seeds positive, all four arms
-that contain it survive Bonferroni, and it repeats on a decoder backbone where
-it costs $3.6$ Spearman. It is negative on CoLA and MRPC too, and positive only
-on RTE, which is too small to resolve any effect we measure. Message passing
-(C) is the only component that ever helps significantly, by $+1.42$ MCC on
-CoLA. The graph (A) does nothing anywhere. Because B and C point in opposite
-directions, a study that reported ``hyperbolic pooling'' as a single switch
-would have averaged them to about zero.
+\textbf{The three parts disagree, and that is the main result.} The hyperbolic
+readout is reliably harmful, on an encoder and again on a decoder, and we can
+say why: it amplifies seed variance rather than acting as a useful prior.
+Hyperbolic message passing is the only part that ever helps. The hyperbolic
+graph does nothing anywhere. Reported as a single ``hyperbolic'' switch these
+would have averaged to about zero; the stage-wise design is what makes them
+visible.
 
-We are cautious about C. Its gain does not reach MRPC, and it does not survive
-being taken apart: a $2\times2$ that toggles curvature and the graph/architecture
-configuration separately finds that neither factor alone reproduces it, and
-that no single component is significant at $15$ seeds.
+\textbf{We are careful about the one gain.} It is significant end to end, but a
+factorial that separates curvature from the graph density and architecture it
+was tuned alongside cannot attribute it to either --- the total is significant
+and none of its components is. We report it as real but unexplained.
 
-We also question the premise. The usual reason to go hyperbolic is a low
-measured $\delta$-hyperbolicity. That measure is an artifact of a few
-large-norm tokens: on an outlier-free angular metric ModernBERT scores $0.2127$
-and BERT $0.2114$ --- the same --- while the Euclidean version of the same
-measure differs between them by two orders of magnitude.
+\textbf{We also question the premise.} The usual justification for going
+hyperbolic is a low measured $\delta$-hyperbolicity. That statistic is an
+artifact of a few very large token norms: on an outlier-free metric the
+backbones it is used to tell apart are indistinguishable ($0.2127$ against
+$0.2114$), while the Euclidean version differs between them by two orders of
+magnitude. Measured tree-likeness cannot tell you where curvature will help ---
+only a controlled, component-wise comparison can.
 \end{abstract}
 
 %-------------------------------------------------------------------------
