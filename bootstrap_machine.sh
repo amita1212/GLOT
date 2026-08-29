@@ -40,14 +40,24 @@ fi
 mkdir -p logs results data
 
 # CRLF kills bash and python alike, and this repo gets edited on Windows.
-sed -i 's/\r$//' *.sh *.py 2>/dev/null || true
+sed -i 's/\r$//' *.sh *.py gcp/*.sh 2>/dev/null || true
 
 echo
 echo "=== compile check ==="
+# main.py sits at the repo root in a clean clone. exp_runner.py prefers
+# hyperglot/main.py and falls back to the root copy, so either layout runs.
 ~/glotenv/bin/python -m py_compile campaign.py seed_extend.py \
-    factorial_geom_full.py hyperglot/main.py \
+    factorial_geom_full.py exp_runner.py main.py \
     || { echo "COMPILE FAILED -- stop here"; exit 1; }
 echo "COMPILE_OK"
+
+echo
+echo "=== every file the workers call must exist in this clone ==="
+for f in gcp/prewarm_model.sh paired_analysis.py exp_runner.py main.py \
+         campaign.py worker_decoder.sh; do
+    [ -f "$f" ] || { echo "MISSING $f -- clone is incomplete, stop here"; exit 1; }
+done
+echo "FILES_OK"
 
 echo
 echo "=== environment fingerprint (compare across machines!) ==="

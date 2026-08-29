@@ -17,8 +17,12 @@
 # Usage: bash prewarm_model.sh <hf-model-name> <hidden_layer> [tasks...]
 #        hidden_layer = -1 for the last layer (GLOT's default), or 1..N.
 set -u
-cd /home/t-amitalfasi/glot
-PY=~/glotenv/bin/python
+# Resolve the repo root from this script's OWN location. This is called on
+# other people's machines where /home/t-amitalfasi does not exist, and a failed
+# `cd` would silently leave us in the wrong directory writing caches nowhere
+# useful.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PY:-$HOME/glotenv/bin/python}"
 MODEL="${1:-bert-base-uncased}"
 LAYER="${2:--1}"
 shift 2 || true

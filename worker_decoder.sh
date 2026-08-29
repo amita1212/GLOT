@@ -32,8 +32,10 @@
 #   decoder CoLA got 31 tuning rows and zero confirmation rows before it was
 #   cut off, so it starts from scratch.
 set -u
-cd /home/t-amitalfasi/glot
-PY=~/glotenv/bin/python
+# Resolve the repo root from this script's own location -- this runs on other
+# people's machines, where a hardcoded /home/<user> path does not exist.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY="${PY:-$HOME/glotenv/bin/python}"
 export WANDB_MODE=disabled TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 mkdir -p logs results
@@ -54,7 +56,7 @@ echo "[$TAG/$TASK] start $(date -Is)"
 # global RNG before the classifier is built, so the same seed gives a different
 # initialisation cold vs warm. Whichever arm ran first would be handicapped.
 echo "[$TAG/$TASK] pre-warming cache"
-bash prewarm_model.sh "$MODEL" -1 "$TASK" > "logs/${TAG}_prewarm_${TASK}.log" 2>&1
+bash gcp/prewarm_model.sh "$MODEL" -1 "$TASK" > "logs/${TAG}_prewarm_${TASK}.log" 2>&1
 if ! ls -d data/${SLUG}_*batches >/dev/null 2>&1; then
     echo "[$TAG/$TASK] PREWARM FAILED -- refusing to run"
     tail -20 "logs/${TAG}_prewarm_${TASK}.log"

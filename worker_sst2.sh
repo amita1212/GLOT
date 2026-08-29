@@ -28,8 +28,9 @@
 #
 # EXPECT ~20 GPU-HOURS: 4 arms x 15 seeds x ~1,200 s.
 set -u
-cd /home/t-amitalfasi/glot
-PY=~/glotenv/bin/python
+# Resolve the repo root from this script's own location.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY="${PY:-$HOME/glotenv/bin/python}"
 export WANDB_MODE=disabled TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 mkdir -p logs results
@@ -46,7 +47,7 @@ fi
 echo "=== pre-warming BERT/SST-2 cache ==="
 echo "SST-2 is 7.9x CoLA; check disk before and after."
 df -h /home | tail -1
-bash prewarm_model.sh "$MODEL" -1 sst2 > logs/sst2_prewarm.log 2>&1
+bash gcp/prewarm_model.sh "$MODEL" -1 sst2 > logs/sst2_prewarm.log 2>&1
 if [ $? -ne 0 ]; then
     echo "PREWARM FAILED -- see logs/sst2_prewarm.log"
     tail -20 logs/sst2_prewarm.log

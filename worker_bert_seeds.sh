@@ -27,8 +27,9 @@
 # COMMIT TO THE ANSWER. Both jobs are powered a priori. Do not re-run either
 # with a different seed count after seeing which way it went.
 set -u
-cd /home/t-amitalfasi/glot
-PY=~/glotenv/bin/python
+# Resolve the repo root from this script's own location.
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY="${PY:-$HOME/glotenv/bin/python}"
 export WANDB_MODE=disabled TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 mkdir -p logs results
@@ -45,7 +46,7 @@ if [ ! -f "$SRC" ]; then
 fi
 
 echo "=== pre-warming BERT/CoLA cache (load-bearing, not an optimisation) ==="
-bash prewarm_model.sh "$MODEL" -1 cola > logs/bs_prewarm_cola.log 2>&1
+bash gcp/prewarm_model.sh "$MODEL" -1 cola > logs/bs_prewarm_cola.log 2>&1
 df -h /home | tail -1
 
 echo
