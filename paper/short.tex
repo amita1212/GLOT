@@ -104,6 +104,15 @@ SST-2 reduced design (baseline, B, C, BC; 15 seeds)
 RoBERTa $q{=}0.05 \times \{$\texttt{rms}, \texttt{median}$\}$
   & Two \PEND{} cells in Table~\ref{tab:fix}
   & unscheduled, $<$1\,h \\
+MTEB with a pooler actually trained on MS MARCO; arms baseline, A, C, AC;
+  5 seeds
+  & Replaces the untrained-pooler block of Table~\ref{tab:docmteb}, which
+    currently measures only random initialisation
+  & Azure, pipeline to build \\
+IMDB, arms baseline, A, C, AC, 5 seeds, with search
+  & A long-text test of Stages A and C. At $n{=}5$ this is a lead, not a
+    significant result
+  & Azure, $\approx$4\,d \\
 Related work
   & \S\ref{sec:related} is a stub
   & not started \\
@@ -420,8 +429,9 @@ amplification --- a quantity that shrinks as data grows. Our Stage B negative
 may therefore be a small-data effect rather than a property of the geometry.
 SST-2 ($67$k examples, $7.9\times$ CoLA) is the cheapest test that would settle
 it, and we did not run it. We do report IMDB and seven MTEB tasks
-(Appendix~\ref{app:docmteb}), but only at one seed and only for the graph stage,
-so they carry no weight here.
+(Appendix~\ref{app:docmteb}), but only at one seed and only for the graph stage
+--- and the MTEB rows turn out to evaluate an untrained pooler --- so they carry
+no weight here.
 
 \TODO{SST-2 is now queued as a reduced design (baseline, B, C, BC; confirmation
 seeds only; CoLA-selected configurations replayed). Rewrite ``we did not run
@@ -1094,6 +1104,21 @@ MTEB tasks (zero-shot retrieval and clustering). We ran both, early in the
 project, at a single seed and on BERT only. We report them here for coverage and
 draw no statistical conclusion: with $n=1$ there is no test to run.
 
+\paragraph{The MTEB rows evaluate an untrained pooler, and we report them only
+so the record is complete.} \citet{mantri2026glot} obtain their MTEB numbers by
+contrastively training the pooler on MS MARCO triplets and then evaluating
+zero-shot. \emph{We never ran that stage.} Our driver never sets
+\texttt{checkpoint\_path}, and the evaluation entry point loads pooler weights
+only when that argument is set, so every MTEB row below was produced by a pooler
+at its random initialisation on top of the frozen backbone. The wall-clock times
+confirm it: $7$--$171$ seconds per task, which is inference and nothing else.
+The consequence is that the three MTEB columns differ only by random
+initialisation --- they agree to the third decimal on five of seven tasks --- and
+they carry no information about Stage A whatsoever. We leave them in place
+because an earlier draft of this paper described them as trained, and silently
+deleting the table would hide that correction. The IMDB rows are unaffected:
+that task trains the pooler normally.
+
 \paragraph{One of these rows is not what its name says.} These runs predate our
 switch to quantile thresholding. The \texttt{A\_threshold} arm used an absolute
 radius $\rho = 1.0$ on unnormalised BERT features, and as
@@ -1105,9 +1130,11 @@ Stage A result. We keep the column only so it cannot be mistaken for one.
 \begin{table}[h]
 \caption{IMDB accuracy and MTEB main scores ($\times 100$), BERT-base, seed $42$,
 one run per cell. The middle column is the $\rho$-defect run described above; it
-trained on an empty graph and is not a Stage A measurement. MTEB is zero-shot
-after contrastive training on MS MARCO triplets; the seven tasks are those of
-\citet{mantri2026glot}.}
+trained on an empty graph and is not a Stage A measurement. \textbf{The MTEB
+block evaluates an \emph{untrained} pooler} --- we did not run the MS MARCO
+contrastive stage --- so those three columns differ only by random
+initialisation and measure nothing about the method. The seven tasks are those
+of \citet{mantri2026glot}.}
 \label{tab:docmteb}
 \begin{center}
 \small
@@ -1133,10 +1160,21 @@ MTEB mean                  & \textbf{33.98} & 33.92 & 33.58 \\
 \end{table}
 
 Across seven MTEB tasks the largest gap to the baseline is $2.34$, on a task
-where all three columns sit within a few points of each other. Nothing here is
+where all three columns sit within a few points of each other --- which is what
+a random pooler evaluated three times should look like. Nothing here is
 separable at one seed, and neither Stage B nor Stage C was ever run on these
-benchmarks. Doing it properly is expensive: our IMDB runs took $3.8$ hours each
-at $512$ tokens, so eight arms $\times$ $15$ seeds would be roughly $20$ days.
+benchmarks. Doing it properly is expensive on the IMDB side: our runs took $3.8$
+hours each at $512$ tokens, so eight arms $\times$ $15$ seeds would be roughly
+$20$ days. The MTEB side is cheap to \emph{evaluate} (all seven tasks take about
+eight minutes) but requires building the MS MARCO contrastive stage first.
+
+\TODO{Both gaps are now being addressed on separate hardware: a corrected MTEB
+pipeline that actually trains the pooler on MS MARCO before evaluating, and
+IMDB on arms baseline, A, C and AC at five seeds. When they land, this appendix
+is rewritten and the untrained-pooler table above is replaced rather than
+amended. Note that $n=5$ cannot reach our both-tests significance bar --- the
+exact sign test bottoms out at $p=0.0625$ --- so the result will be a lead, of
+the same status as Table~\ref{tab:fix}, and must be worded that way.}
 
 \section{Notes for reproducers}
 \label{app:defects}
@@ -1230,7 +1268,8 @@ did not run.
       backbones, plus IMDB and seven MTEB tasks. We report four GLUE tasks with
       the full nine-arm design on BERT, two on RoBERTa, one on TinyLlama, a
       synthetic noise task, and IMDB plus the same seven MTEB tasks at a single
-      seed for the graph stage only (Appendix~\ref{app:docmteb}). We never ran
+      seed for the graph stage only, the latter with an untrained pooler
+      (Appendix~\ref{app:docmteb}). We never ran
       Mean, Max or \texttt{[CLS]} on GLUE, so we cannot reproduce their
       method-comparison table; our rows are \textsc{Glot}'s own components.
 \end{itemize}

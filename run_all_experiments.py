@@ -272,7 +272,11 @@ def maybe_git_push(paths: List[str], message: str, push: bool) -> None:
 # Command builders.
 # --------------------------------------------------------------------------- #
 def build_main_cmd(python: str, model: Model, task: str, cfg: Config, seed: int,
-                   results_csv: str, mteb_task: Optional[str] = None) -> List[str]:
+                   results_csv: str, mteb_task: Optional[str] = None,
+                   checkpoint_path: Optional[str] = None,
+                   save_ckpt_path: Optional[str] = None,
+                   train_file: Optional[str] = None,
+                   eval_split: Optional[str] = None) -> List[str]:
     hp = dict(GLUE_HP)
     hp["tau"] = task_tau(task)
     hp.update(model.overrides)
@@ -303,6 +307,17 @@ def build_main_cmd(python: str, model: Model, task: str, cfg: Config, seed: int,
         cmd.append(f"--{k}={v}")
     if task == "mteb" and mteb_task:
         cmd.append(f"--mteb_task={mteb_task}")
+    # Omitting --checkpoint_path leaves main.py at its "standard" default, which
+    # makes evaluate_mteb skip the state_dict load entirely and score a randomly
+    # initialised pooler. That is exactly how the first MTEB table was produced.
+    if checkpoint_path:
+        cmd.append(f"--checkpoint_path={checkpoint_path}")
+    if save_ckpt_path:
+        cmd.append(f"--save_ckpt_path={save_ckpt_path}")
+    if train_file:
+        cmd.append(f"--train_file={train_file}")
+    if eval_split:
+        cmd.append(f"--eval_split={eval_split}")
     return cmd
 
 
@@ -363,7 +378,18 @@ def main() -> int:
     p.add_argument("--seeds", nargs="*", type=int, default=[42])
     p.add_argument("--with_stress", action="store_true", help="Also run the negation stress test.")
     p.add_argument("--stress_only", action="store_true", help="Run only the stress test.")
-    p.add_argument("--with_mteb", action="store_true", help="Also run MTEB tasks (untrained-pooler eval).")
+    p.add_argument("--with_mteb", action="store_true",
+                   help="Also run MTEB. Each (arm, seed) is first contrastively trained on "
+                        "MS MARCO triplets, then evaluated zero-shot on every --mteb_tasks entry.")
+    p.add_argument("--mteb_untrained", action="store_true",
+                   help="Skip the MS MARCO stage and evaluate a randomly initialised pooler. "
+                        "Reproduces the original MTEB numbers, which measure initialisation "
+                        "noise and nothing else. Not a result.")
+    p.add_argument("--mteb_train_file", default=os.path.join(HERE, "data", "msmarco-triplets.jsonl"),
+                   help="MS MARCO triplets file; create it with fetch_msmarco.py.")
+    p.add_argument("--mteb_ckpt_dir", default=os.path.join(HERE, "checkpoints"),
+                   help="Where per-(arm, seed) trained poolers are written, and reused from "
+                        "on resume.")
     p.add_argument("--mteb_tasks", nargs="*", default=DEFAULT_MTEB_TASKS)
     p.add_argument("--results_csv", default=DEFAULT_RESULTS_CSV)
     p.add_argument("--stress_csv", default=DEFAULT_STRESS_CSV)
@@ -426,16 +452,51 @@ def main() -> int:
 
         if args.with_mteb:
             for model in models:
-                for mteb_task in args.mteb_tasks:
-                    for cfg in configs:
-                        for seed in args.seeds:
+                for cfg in configs:
+                    for seed in args.seeds:
+                        # Stage 1 -- contrastively train the pooler on MS MARCO and
+                        # write it to a path the caller knows. Without this the
+                        # evaluation below has no trained weights to load.
+                        ckpt = ""
+                        if not args.mteb_untrained:
+                            os.makedirs(args.mteb_ckpt_dir, exist_ok=True)
+                            ckpt = os.path.join(
+                                args.mteb_ckpt_dir,
+                                f"pooler_{model.name.replace('/', '_')}_{cfg.name}_seed{seed}.pth")
+                            if os.path.exists(ckpt):
+                                print(f"[skip] reusing checkpoint {ckpt}")
+                            else:
+                                cmd = build_main_cmd(args.python, model, "embedding", cfg, seed,
+                                                     args.results_csv,
+                                                     save_ckpt_path=ckpt,
+                                                     train_file=args.mteb_train_file)
+                                rc = run_cmd(cmd, args.dry_run)
+                                if rc != 0:
+                                    n_fail += 1
+                                    print(f"[fail rc={rc}] embedding {model.name} {cfg.name} seed{seed}")
+                                    if args.stop_on_error:
+                                        return rc
+                                    continue
+                                n_run += 1
+                            # Refuse to fall through to an untrained evaluation.
+                            if not args.dry_run and not os.path.exists(ckpt):
+                                n_fail += 1
+                                print(f"[fail] embedding stage wrote no checkpoint at {ckpt}; "
+                                      f"refusing to evaluate an untrained pooler")
+                                if args.stop_on_error:
+                                    return 1
+                                continue
+
+                        # Stage 2 -- evaluate every MTEB task with that pooler.
+                        for mteb_task in args.mteb_tasks:
                             done = load_done_keys(args.results_csv, main_key_fields)
                             key = (model.name, "mteb", mteb_task, cfg.name, str(seed))
                             if key in done:
                                 n_skip += 1
                                 continue
                             cmd = build_main_cmd(args.python, model, "mteb", cfg, seed,
-                                                 args.results_csv, mteb_task=mteb_task)
+                                                 args.results_csv, mteb_task=mteb_task,
+                                                 checkpoint_path=(ckpt or None))
                             rc = run_cmd(cmd, args.dry_run)
                             if rc == 0:
                                 n_run += 1

@@ -1048,9 +1048,26 @@ def load_cola():
     ds = load_dataset("nyu-mll/glue", "cola")
     return ds["train"], ds["validation"]
 
-def load_imdb():
+def load_imdb(dev_fraction: float = 0.1, split_seed: int = 12345):
+    """IMDB ships only ``train`` and ``test`` -- there is no development split.
+
+    Selecting hyper-parameters against ``test`` would mean tuning on the split
+    we also report, which is precisely the practice this project criticises, so
+    we carve a fixed dev slice out of ``train`` instead. ``split_seed`` is
+    deliberately independent of ``--seed``: every arm and every confirmation
+    seed must see the identical train/dev partition, otherwise the paired
+    comparison across arms is no longer paired.
+
+    Returns ``(train, test, dev)``; ``dev`` is ``None`` when ``dev_fraction``
+    is non-positive, which reproduces the original two-way behaviour.
+    """
     ds = load_dataset("imdb")
-    return ds["train"], ds["test"]
+    if dev_fraction <= 0.0:
+        return ds["train"], ds["test"], None
+    parts = ds["train"].train_test_split(
+        test_size=dev_fraction, seed=split_seed, stratify_by_column="label"
+    )
+    return parts["train"], ds["test"], parts["test"]
 
 def load_embedding_dataset(train_file, num_samples):
     if num_samples == "subset":
@@ -1867,7 +1884,10 @@ def train_pair_embedding(
         optimizer = None
 
     loss_fn = ContrastiveLoss()
-    best_acc = 0.0
+    # The contrastive loss is strictly positive, so seeding the running minimum
+    # at 0.0 made ``min(best_acc, avg_loss)`` return 0.0 on every epoch and the
+    # reported best_loss was always exactly zero regardless of training.
+    best_acc = float("inf")
 
     if optimizer is not None:
         for epoch in range(args.epochs):
@@ -1903,21 +1923,28 @@ def train_pair_embedding(
             if args.verbose:
                 print(f"[{pooler_name}] epoch {epoch+1} loss {avg_loss:.4f}")
             best_acc = min(best_acc, avg_loss)
-            model = CustomMTEBModel(
-                model_name=None,
-                revision=None,
-                backbone=backbone,
-                pooler=pooler,
-                pooler_name=pooler_name,
-                device=device,
-                args=args
-            )
-            tasks = mteb.get_tasks(tasks=[args.mteb_task], languages=["eng"])
-            evaluation = mteb.MTEB(tasks=tasks)
-            results = evaluation.run(model, overwrite_results=True)
-            for result in results:
-                print(f"{result.task_name} | {result.get_score()}")
-                wandb.log({f"{result.task_name}": result.get_score()})
+
+            # Mid-training MTEB evaluation is off by default. It used the legacy
+            # mteb.MTEB(...).run() API that the installed version no longer
+            # exposes, and a crash here would kill the run before the checkpoint
+            # below is written -- which is the whole point of this stage.
+            if getattr(args, "eval_during_embedding", 0) and args.mteb_task:
+                model = CustomMTEBModel(
+                    model_name=None,
+                    revision=None,
+                    backbone=backbone,
+                    pooler=pooler,
+                    pooler_name=pooler_name,
+                    device=device,
+                    args=args
+                )
+                tasks = mteb.get_tasks(tasks=[args.mteb_task], languages=["eng"])
+                results = mteb.evaluate(model, tasks=tasks,
+                                        encode_kwargs={"batch_size": args.batch_size},
+                                        overwrite_strategy="always")
+                for result in results:
+                    print(f"{result.task_name} | {result.get_score()}")
+                    wandb.log({f"{result.task_name}": result.get_score()})
 
     
     # Create informative filename based on args
@@ -1937,16 +1964,25 @@ def train_pair_embedding(
     if args.num_train_samples != "full":
         config_str += f"_samples{args.num_train_samples}"
 
-    # Create final path
-    save_path = os.path.join(
+    # Create final path. When --save_ckpt_path is supplied we write exactly
+    # there, so a caller can chain this stage into the MTEB stage by name; the
+    # timestamped fallback below cannot be predicted from outside the process,
+    # which is why the MTEB runs were never given a trained pooler.
+    save_path = getattr(args, "save_ckpt_path", "") or os.path.join(
         args.save_dir, 
         f"{config_str}_{timestamp}.pth"
     )
     if optimizer is not None:
+        parent = os.path.dirname(os.path.abspath(save_path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         torch.save(pooler.state_dict(), save_path)
-    
-    
-    return best_acc
+        if args.verbose:
+            print(f"[{pooler_name}] saved pooler checkpoint -> {save_path}")
+
+    # A frozen pooler never enters the training loop, so best_acc is still inf;
+    # report that as NaN rather than writing inf into the results CSV.
+    return best_acc if best_acc != float("inf") else float("nan")
 
 def evaluate_mteb(
     backbone: Backbone,
@@ -2167,9 +2203,10 @@ def run_tasks(backbone: Backbone, args, device):
                                                 train_ds=train_ds, val_ds=val_ds, args=args, device=device)
 
     elif task == "imdb":
-        train_ds, test_ds = load_imdb()
+        train_ds, test_ds, dev_ds = load_imdb(args.imdb_dev_fraction, args.imdb_split_seed)
+        eval_ds = dev_ds if (args.eval_split == "dev" and dev_ds is not None) else test_ds
         metrics = train_single_classification(backbone, pooler, pooling_name, num_labels=2,
-                                                train_ds=train_ds, val_ds=test_ds, args=args, device=device)
+                                                train_ds=train_ds, val_ds=eval_ds, args=args, device=device)
     
     elif task == "embedding":
         train_ds = load_embedding_dataset(args.train_file, args.num_train_samples)
@@ -2229,6 +2266,23 @@ def build_argparser():
     p.add_argument("--train_file", type=str, default="./data/msmarco-triplets.jsonl", help="Download from https://huggingface.co/datasets/sentence-transformers/embedding-training-data/resolve/main/msmarco-triplets.jsonl.gz")
     p.add_argument("--num_train_samples", type=str, default="subset", help="choose from [subset, full]")
     p.add_argument("--checkpoint_path", type=str, default="standard", help="Pooler Checkpoint path to evaluate on MTEB")
+    p.add_argument("--save_ckpt_path", type=str, default="",
+                   help="Exact path to write the trained pooler to after --task=embedding. "
+                        "Leave empty for the legacy timestamped filename. Set this when a "
+                        "driver needs to feed the checkpoint into --checkpoint_path.")
+    p.add_argument("--eval_during_embedding", type=int, default=0,
+                   help="Run an MTEB evaluation after every embedding-training epoch. Off by "
+                        "default: it costs a full evaluation per epoch and is not needed to "
+                        "produce the checkpoint.")
+    p.add_argument("--eval_split", type=str, default="test", choices=["dev", "test"],
+                   help="Which split to score on for tasks that expose a held-out dev slice "
+                        "(currently IMDB). Use 'dev' for tuning and 'test' for confirmation, "
+                        "so no configuration is ever selected on the reported split.")
+    p.add_argument("--imdb_dev_fraction", type=float, default=0.1,
+                   help="Fraction of IMDB train held out as dev. 0 disables the split.")
+    p.add_argument("--imdb_split_seed", type=int, default=12345,
+                   help="Seed for the IMDB train/dev partition. Independent of --seed on "
+                        "purpose: all arms and seeds must share one partition.")
     p.add_argument("--mteb_task", type=str, default="SciFact", help="Clustering or Retrieval")
     p.add_argument("--save_dir", type=str, default="./saved_models/", help="Directory to save logs/results.")
     p.add_argument("--max_length", type=int, default=128, help="Max length for texts")
