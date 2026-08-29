@@ -325,7 +325,9 @@ $8{,}551$ training examples, and Stage B's failure mode is variance
 amplification --- a quantity that shrinks as data grows. Our Stage B negative
 may therefore be a small-data effect rather than a property of the geometry.
 SST-2 ($67$k examples, $7.9\times$ CoLA) is the cheapest test that would settle
-it, and we did not run it. We also report no MTEB or IMDB numbers.
+it, and we did not run it. We do report IMDB and seven MTEB tasks
+(Appendix~\ref{app:docmteb}), but only at one seed and only for the graph stage,
+so they carry no weight here.
 
 %-------------------------------------------------------------------------
 \section{Conclusion}
@@ -529,6 +531,56 @@ spans $7.87$ MCC on CoLA, while we measure a spread of $5.46$ across seeds at
 
 \section{Main results}
 \label{app:results}
+
+Table~\ref{tab:absolute} gives the absolute scores behind every delta in this
+paper. It is laid out like Table~1 of \citet{mantri2026glot} --- rows are
+methods, columns are tasks, blocks are backbones --- but the rows are our arms
+rather than competing poolers, because our question is which \emph{component}
+of \textsc{Glot} does what, not whether \textsc{Glot} beats mean-pooling. We
+never ran Mean, Max or \texttt{[CLS]} on GLUE, so we cannot fill their five
+method rows; those poolers appear only in the noise diagnostic
+(Appendix~\ref{app:stress}), where they lose by $14$--$35$ points.
+
+\begin{table}[h]
+\caption{Absolute confirmed scores, mean $\pm$ sd over the $15$ shared seeds.
+Metrics follow \citet{mantri2026glot}: MCC for CoLA, Spearman for STS-B, F1 for
+MRPC, accuracy for RTE. ``---'' means the arm was not run on that backbone; the
+RoBERTa campaign searched a different arm set (published $\tau$ and the quantile
+repair) because its failure mode is thresholding, not geometry. Every number is
+a confirmation mean, never a tuning maximum.}
+\label{tab:absolute}
+\begin{center}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{4}{c}{BERT-base} & \multicolumn{2}{c}{RoBERTa-base} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-7}
+Arm & CoLA & STS-B & MRPC & RTE & CoLA & STS-B \\
+    & (MCC) & (Spear.) & (F1) & (acc.) & (MCC) & (Spear.) \\
+\midrule
+\textsc{Glot} (baseline) & 45.37\,$\pm$1.30 & 82.53\,$\pm$0.33 & 82.14\,$\pm$0.44 & 53.79\,$\pm$3.36 & \textbf{54.60}\,$\pm$1.52 & 83.89\,$\pm$0.30 \\
+no graph                 & 46.20\,$\pm$2.54 & 82.57\,$\pm$0.34 & 82.17\,$\pm$0.31 & 53.86\,$\pm$2.74 & 54.32\,$\pm$2.06 & 83.84\,$\pm$0.32 \\
+published $\tau$         & --- & --- & --- & --- & 54.46\,$\pm$1.18 & \textbf{84.21}\,$\pm$0.29 \\
+quantile $\tau$          & --- & --- & --- & --- & 53.19\,$\pm$1.59 & 83.73\,$\pm$0.29 \\
+\midrule
+A   & 46.07\,$\pm$0.99 & 82.56\,$\pm$0.31 & \textbf{82.18}\,$\pm$0.29 & 53.82\,$\pm$1.58 & 54.37\,$\pm$0.89 & 83.80\,$\pm$0.30 \\
+B   & 44.11\,$\pm$1.48 & 81.47\,$\pm$0.36 & 81.81\,$\pm$0.39 & 54.78\,$\pm$1.58 & --- & --- \\
+C   & \textbf{46.78}\,$\pm$0.79 & 82.73\,$\pm$0.31 & 81.83\,$\pm$0.39 & 54.34\,$\pm$2.07 & --- & --- \\
+AB  & 44.13\,$\pm$1.61 & 81.79\,$\pm$0.46 & 81.86\,$\pm$0.41 & 54.59\,$\pm$2.93 & --- & --- \\
+AC  & 45.82\,$\pm$1.94 & \textbf{82.77}\,$\pm$0.20 & 81.99\,$\pm$0.35 & 55.26\,$\pm$1.80 & --- & --- \\
+BC  & 45.59\,$\pm$1.19 & 81.29\,$\pm$0.32 & 81.83\,$\pm$0.43 & \textbf{55.64}\,$\pm$1.88 & --- & --- \\
+ABC & 44.84\,$\pm$1.87 & 81.70\,$\pm$0.34 & 81.88\,$\pm$0.44 & 54.85\,$\pm$1.52 & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Two things are visible here that the delta tables hide. The whole spread on MRPC
+is $0.37$ F1 across eleven arms, and on RTE the seed standard deviation
+($1.5$--$3.4$) is larger than every gap in the column --- which is why we treat
+both as null. And the bolded best cell is a \emph{different arm} in five of the
+six columns, which is what a table of noise looks like.
 
 \begin{table}[h]
 \caption{Per-stage verdict. Entries are paired mean differences against
@@ -838,6 +890,62 @@ recovers the whole gap once it can choose $K=4$. This is the clearest
 illustration of the paper's own point: a pooling comparison is only as good as
 the budget given to its control.
 
+\section{Long-text and retrieval benchmarks}
+\label{app:docmteb}
+
+\citet{mantri2026glot} also report IMDB (long-text classification) and seven
+MTEB tasks (zero-shot retrieval and clustering). We ran both, early in the
+project, at a single seed and on BERT only. We report them here for coverage and
+draw no statistical conclusion: with $n=1$ there is no test to run.
+
+\paragraph{One of these rows is not what its name says.} These runs predate our
+switch to quantile thresholding. The \texttt{A\_threshold} arm used an absolute
+radius $\rho = 1.0$ on unnormalised BERT features, and as
+Appendix~\ref{app:defects} explains, real Poincar\'e distances there lie in
+$[8.85, 11.76]$ --- so that arm trained on an \emph{empty graph}. We therefore
+relabel it: it is not Stage A, it is an accidental graph-free control. Read that
+way it replicates, on two further benchmark families, the GLUE finding of
+Appendix~\ref{app:results} that deleting every edge costs nothing: $+0.24$
+accuracy on IMDB and $-0.06$ on the MTEB mean. \texttt{A\_knn} used a $k$-NN
+Poincar\'e graph and is a genuine Stage A variant; it is also flat.
+
+\begin{table}[h]
+\caption{IMDB accuracy and MTEB main scores ($\times 100$), BERT-base, seed $42$,
+one run per cell. ``no graph$^{\dagger}$'' is the mislabelled
+\texttt{A\_threshold} arm described above. MTEB is zero-shot after contrastive
+training on MS MARCO triplets; the seven tasks are those of
+\citet{mantri2026glot}.}
+\label{tab:docmteb}
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+ & \textsc{Glot} & no graph$^{\dagger}$ & Stage A \\
+ & (cosine) & (empty) & ($k$-NN) \\
+\midrule
+IMDB (acc.) & 92.26 & \textbf{92.50} & 92.46 \\
+\midrule
+Banking77Classification    & 46.91 & 46.90 & \textbf{46.91} \\
+STS12                      & 30.02 & \textbf{30.04} & 27.68 \\
+STS13                      & 59.57 & 59.60 & \textbf{59.83} \\
+SciFact                    & 13.93 & \textbf{14.10} & 13.39 \\
+ArguAna                    & \textbf{28.25} & 28.11 & 27.73 \\
+TwentyNewsgroupsClustering & 24.49 & 24.13 & \textbf{25.10} \\
+SprintDuplicateQuestions   & \textbf{34.67} & 34.57 & 34.40 \\
+\midrule
+MTEB mean                  & \textbf{33.98} & 33.92 & 33.58 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Across seven MTEB tasks the largest gap to the baseline is $0.17$ for the
+graph-free arm and $2.34$ for $k$-NN (both on tasks where all three arms sit
+within a few points of each other). Nothing here is separable at one seed, and
+neither Stage B nor Stage C was ever run on these benchmarks. Doing it properly
+is expensive: our IMDB runs took $3.8$ hours each at $512$ tokens, so eight arms
+$\times$ $15$ seeds would be roughly $20$ days.
+
 \section{Notes for reproducers}
 \label{app:defects}
 
@@ -933,9 +1041,12 @@ did not run.
       nominally positive there and not one is significant. We include it for
       completeness and base no conclusion on it.
 \item \textbf{Coverage.} \citet{mantri2026glot} report ten GLUE tasks on six
-      backbones, plus IMDB and seven MTEB tasks; we report four GLUE tasks on
-      BERT, two on RoBERTa, one on TinyLlama, plus a synthetic noise task, and
-      no MTEB or IMDB.
+      backbones, plus IMDB and seven MTEB tasks. We report four GLUE tasks with
+      the full nine-arm design on BERT, two on RoBERTa, one on TinyLlama, a
+      synthetic noise task, and IMDB plus the same seven MTEB tasks at a single
+      seed for the graph stage only (Appendix~\ref{app:docmteb}). We never ran
+      Mean, Max or \texttt{[CLS]} on GLUE, so we cannot reproduce their
+      method-comparison table; our rows are \textsc{Glot}'s own components.
 \end{itemize}
 
 \end{document}
