@@ -518,15 +518,19 @@ spans $7.87$ MCC on CoLA, while we measure a spread of $5.46$ across seeds at
 
 \begin{table}[h]
 \caption{Per-stage verdict. Entries are paired mean differences against
-\textsc{Glot}'s flat baseline on shared seeds. $\dagger$ significant on both the
-paired $t$-test and the exact sign test; $\ddagger$ additionally surviving
-Bonferroni. ``---'' was not run.}
+\textsc{Glot}'s flat baseline on shared seeds. The last column is \emph{not} a
+fourth task: it is STS-B again on a decoder backbone, so it sits directly
+beside the BERT STS-B column and the two can be read as a replication.
+$\dagger$ significant on both the paired $t$-test and the exact sign test;
+$\ddagger$ additionally surviving Bonferroni. ``---'' was not run.}
 \label{tab:verdict}
 \begin{center}
 \small
 \begin{tabular}{lccccl}
 \toprule
-Arm & CoLA & STS-B & MRPC & TinyLlama & Verdict \\
+ & \multicolumn{3}{c}{BERT-base (encoder)} & TinyLlama-1.1B (decoder) & \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-5}
+Arm & CoLA & STS-B & MRPC & STS-B & Verdict \\
     & (MCC) & (Spear.) & (F1) & (Spear.) & \\
 \midrule
 A   & $+0.70$ & $+0.03$ & $+0.04$ & $+0.04$ & flat everywhere \\
@@ -542,6 +546,8 @@ ABC & $-0.53$ & $-0.84^{\ddagger}$ & $-0.26$ & $-4.51^{\ddagger}$ & harmful \\
 is positive anywhere.}} \\
 \multicolumn{6}{l}{\emph{Every arm with C but not B is positive on CoLA and
 STS-B.}} \\
+\multicolumn{6}{l}{\emph{The two STS-B columns agree in sign on all five arms
+run on both backbones.}} \\
 \bottomrule
 \end{tabular}
 \end{center}
