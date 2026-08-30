@@ -75,6 +75,11 @@ class Config:
     learnable_c: int = 0          # learnable Poincare curvature (0/1)
     gnn_input_clip: float = 0.0   # Stage C: clip token norm before entry exp map (0=off)
     gnn_input_scale: int = 0      # Stage C: learnable input scale before entry exp map (0/1)
+    # Which pooler to build. Everything in this study is "glot"; the four
+    # bag-of-tokens poolers exist so the MTEB block can reproduce the method
+    # rows of Table 3 in the original paper, which compares GLOT against them.
+    # The graph/hyperbolic fields are ignored when this is not "glot".
+    pooling_method: str = "glot"
 
 
 def build_configs() -> Dict[str, Config]:
@@ -142,6 +147,17 @@ def build_configs() -> Dict[str, Config]:
             readout_clip=0.7, readout_scale=1, learnable_c=1,
             gnn_input_clip=0.7, gnn_input_scale=1,
         )
+
+    # --- bag-of-tokens poolers, for the MTEB method-comparison block ---------
+    # These are the rows the original paper's Table 3 compares GLOT against.
+    # They ignore every graph and curvature field above -- build_pooler only
+    # reads the name -- so they are only meaningful where the pooler is trained
+    # end to end (MTEB via MS MARCO). Running them on GLUE would need the same
+    # per-arm search the GLUE campaigns give every other arm, which we have not
+    # done, so do not put these in a GLUE table.
+    for pooler in ("cls", "mean", "max", "adapool"):
+        cfgs[pooler] = Config(pooler, "cosine", "threshold", 0, 0,
+                              pooling_method=pooler)
     return cfgs
 
 
@@ -288,7 +304,7 @@ def build_main_cmd(python: str, model: Model, task: str, cfg: Config, seed: int,
         f"--max_length={glue_max_length(task)}",
         f"--seed={seed}",
         "--verbose=1",
-        "--pooling_method=glot",
+        f"--pooling_method={cfg.pooling_method}",
         f"--graph_adj={cfg.graph_adj}",
         f"--graph_metric={cfg.graph_metric}",
         f"--hyperbolic_gnn={cfg.hyperbolic_gnn}",
@@ -414,7 +430,16 @@ def main() -> int:
     if args.all:
         tasks = GLUE_TASKS + DOC_TASKS
     cfg_names = args.configs if args.configs is not None else list(CONFIGS)
-    configs = [CONFIGS[c] for c in cfg_names if c in CONFIGS]
+    # Fail loudly on an unknown name. This used to filter silently, which meant
+    # `--configs baseline A C AC` ran ONE arm instead of four (the real names
+    # are A_threshold, C_threshold, AC_threshold) with no error and no hint in
+    # the output -- an entire campaign's worth of GPU time for a single row.
+    unknown = [c for c in cfg_names if c not in CONFIGS]
+    if unknown:
+        raise SystemExit(
+            f"unknown config name(s): {unknown}\n"
+            f"available: {sorted(CONFIGS)}")
+    configs = [CONFIGS[c] for c in cfg_names]
     do_commit = args.git_commit or args.git_push
 
     os.makedirs(os.path.dirname(os.path.abspath(args.results_csv)), exist_ok=True)
