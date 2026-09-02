@@ -23,7 +23,12 @@ pip install -q torch-scatter torch-sparse pyg-lib \
 pip install -q torch-geometric==2.6.1
 
 echo "=== NLP / research stack ==="
+# geoopt supplies PoincareBall, i.e. exp/log maps for ALL THREE stages. It was
+# missing here until 30 Aug: setup reported "ALL IMPORTS OK" because the verify
+# block below did not import it, so a fresh VM looked healthy and then failed on
+# the first real run with ModuleNotFoundError from main.py line 11.
 pip install -q \
+    geoopt==0.5.1 \
     transformers==4.57.0 \
     datasets==3.6.0 \
     sentence-transformers==5.1.1 \
@@ -37,8 +42,12 @@ pip install -q \
     tqdm==4.67.1
 
 echo "=== verify ==="
+# Import what the ENTRY POINTS actually need, not a hand-picked list -- the old
+# list omitted geoopt and therefore passed on a machine that could not run.
 python - <<'PY'
 import torch, torch_scatter, torch_geometric, transformers, datasets, mteb, peft, wandb, sklearn
+import geoopt, scipy
+print("geoopt          ", geoopt.__version__)
 print("torch           ", torch.__version__)
 print("cuda available  ", torch.cuda.is_available())
 print("gpu             ", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none")

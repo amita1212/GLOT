@@ -53,14 +53,18 @@ each independently and give all eight combinations the same search budget over
 fifteen shared seeds.
 
 \textbf{The three stages disagree, and that is the main result.} Stage B, the
-hyperbolic readout, is reliably harmful --- on two encoders and a decoder, with
-the effect size replicating to within $0.2$ Spearman across backbones --- and we
-can say why: it amplifies seed variance rather than acting as a useful prior.
-Stage C, hyperbolic message passing, is the stage that helps, and its end-to-end
-effect is significant. Stage A, the hyperbolic graph, is positive on CoLA at
-fifty seeds but separates from the baseline nowhere else. What does \emph{not}
-transfer is how the stages combine: the sign of the B$\times$C interaction
-changes with task and backbone.
+hyperbolic readout, is reliably harmful under supervised fine-tuning --- on two
+encoders and a decoder, with the effect size replicating to within $0.2$
+Spearman across backbones --- and we can say why: it amplifies seed variance
+rather than acting as a useful prior. But that harm is specific to the regime:
+with the pooler trained contrastively and evaluated zero-shot on MTEB, the same
+readout gives the largest effects in this paper in \emph{both} directions
+($+10.5$ Spearman on STS12, $-15.5$ max-AP on TwitterSemEval2015, both $15/15$
+seeds one way or the other). Stage C, hyperbolic message passing, is the stage
+that helps on GLUE, and its end-to-end effect is significant there. Stage A, the
+hyperbolic graph, is positive on CoLA at fifty seeds but separates from the
+baseline nowhere else. What does \emph{not} transfer is how the stages combine:
+the sign of the B$\times$C interaction changes with task and backbone.
 
 \textbf{We are careful about the one gain, and the powered run made us more
 careful, not less.} Stage C is worth $+1.69$ MCC on CoLA over $65$ seeds
@@ -113,10 +117,9 @@ and RTE, $9$ arms each
 MTEB with a pooler actually trained on MS MARCO
   & Replaces the untrained-pooler block of Table~\ref{tab:docmteb}, which
     currently measures only random initialisation
-  & \emph{running}. The 30 August launch died on a launcher \emph{path} bug,
-    now diagnosed; relaunched 31 August as $6$ arms $\times$ $15$ seeds
-    $\times$ $3$ backbones on the original's \emph{Table 3} task list,
-    $\approx$8 days \\
+  & \emph{BERT landed} for $5$ of $6$ arms at $15$ seeds
+    (Table~\ref{tab:mteb3}) and it changed the Stage B claim. ABC at $14/15$;
+    two further backbones running, $\approx$6 days \\
 Decoder STS-B baseline, $15$ seeds, inside the B/C campaign
   & Makes the decoder B and C deltas admissible. They currently subtract a
     baseline from a campaign four days older, which is the splice
@@ -168,7 +171,10 @@ demonstration that curvature is what produces it. What remains open: (i) SST-2,
 which is the one way Stage B's negative could still be a small-data artifact,
 and which is \emph{not} scheduled, so that confound stands; (ii) whether Stage
 A's new CoLA positive survives on a task other than CoLA --- it is the only
-setting of eight in which Stage A separates from the baseline.}
+setting of eight in which Stage A separates from the baseline; (iii) the two
+remaining MTEB backbones, since the BERT block has already shown Stage B's sign
+to be regime-dependent and a second backbone would say whether that pattern is
+stable (\S\ref{app:mteb3}).}
 
 %-------------------------------------------------------------------------
 \section{Introduction}
@@ -456,11 +462,26 @@ standard deviation of $3.36$, and a minimum detectable effect of $2.06$ points
 rather than as contrary evidence, but it does mean the honest claim is ``B is
 harmful on the tasks that can measure it''.
 
-\textbf{Verdict: harmful. The one claim here that has replicated rather than
-merely extended.} The single remaining way it could be an artifact is scale ---
-every task we ran has at most $8{,}551$ training examples, and variance
-amplification is a quantity more data suppresses. SST-2 would settle it and is
-not scheduled.
+\paragraph{On zero-shot retrieval the sign is not stable, and this bounds the
+claim.} With the pooler contrastively trained on MS MARCO and evaluated
+zero-shot (Appendix~\ref{app:mteb3}), Stage B produces the largest effects in
+this paper \emph{in both directions}: $+10.46$ Spearman on STS12 and $+3.86$
+ndcg on SciFact, both $15/15$ seeds positive, against $-15.54$ max-AP on
+TwitterSemEval2015 and $-3.04$ accuracy on EmotionClassification, both $0/15$.
+All four survive Bonferroni on a benchmark better powered than CoLA. The
+gyro-midpoint is therefore not harmful \emph{as an operator}; it is harmful in
+the supervised fine-tuning regime we measured it in, and helpful on some
+zero-shot similarity tasks.
+
+\textbf{Verdict: harmful under supervised fine-tuning --- reliably, across two
+encoders and a decoder --- and not harmful in general.} Within GLUE this is
+still the firmest result we have. Outside it the sign flips by task, so the
+claim we are entitled to is about a regime, not about the readout. Two ways it
+could still be narrower than stated: scale, since every GLUE task we ran has at
+most $8{,}551$ training examples and variance amplification is a quantity more
+data suppresses (SST-2 would settle it and is not scheduled); and the
+MTEB result above, which shows the operator can help when the objective
+changes.
 
 %-------------------------------------------------------------------------
 \subsection{Stage C --- hyperbolic message passing: the only stage that ever helps, and we cannot say why}
@@ -526,7 +547,10 @@ replacing the Euclidean GNN with the M\"obius one \emph{together with} the
 denser graph and smaller network it was tuned alongside is worth $+1.69$ MCC on
 CoLA, and that we cannot show curvature is the active ingredient. That C is
 negative on MRPC, where the search chose a $15\times$ \emph{sparser} graph, is
-consistent with the configuration mattering at least as much.
+consistent with the configuration mattering at least as much. It does not
+carry to zero-shot retrieval either: on the seven MTEB tasks Stage C is
+nominally negative on five and significantly negative on SciFact ($-1.95$,
+$2/13$, Bonferroni; Appendix~\ref{app:mteb3}).
 
 %-------------------------------------------------------------------------
 \subsection{How the stages combine does not transfer}
@@ -641,10 +665,10 @@ $8{,}551$ training examples, and Stage B's failure mode is variance
 amplification --- a quantity that shrinks as data grows. Our Stage B negative
 may therefore be a small-data effect rather than a property of the geometry.
 SST-2 ($67$k examples, $7.9\times$ CoLA) is the cheapest test that would settle
-it, and we did not run it. We do report IMDB and seven MTEB tasks
-(Appendix~\ref{app:docmteb}), but only at one seed, only for the graph stage,
-and the MTEB rows turn out to evaluate an untrained pooler --- so they carry no
-weight here.
+it, and we did not run it. We also report IMDB at one seed
+(Appendix~\ref{app:docmteb}) and the original's seven MTEB tasks with a
+properly trained pooler at $15$ seeds on BERT (Appendix~\ref{app:mteb3}); the
+latter is where Stage B's sign turns out to depend on the training regime.
 
 %-------------------------------------------------------------------------
 \section{Related work}
@@ -742,12 +766,16 @@ stands against Stage B and we record it as such
 Whether hyperbolic geometry helps graph-based pooling depends entirely on
 \emph{which part} receives it, and the parts disagree enough to cancel.
 
-Stage B, the Einstein gyro-midpoint readout, is reliably harmful: negative in
-every one of the five settings with the power to measure it, $0$ or $1$ of $15$
-seeds positive on STS-B, surviving Bonferroni on \emph{two} encoders and
-repeating on a decoder in combination --- and, on a comparison we can only read
-as indicative because it spans two campaigns, alone as well --- with a variance
-signature that suggests why. Its effect size on STS-B agrees to within $0.2$ Spearman
+Stage B, the Einstein gyro-midpoint readout, is reliably harmful \emph{under
+supervised fine-tuning}: negative in every one of the five settings with the
+power to measure it, $0$ or $1$ of $15$ seeds positive on STS-B, surviving
+Bonferroni on \emph{two} encoders and repeating on a decoder in combination ---
+and, on a comparison we can only read as indicative because it spans two
+campaigns, alone as well --- with a variance signature that suggests why. Change
+the regime and the sign changes with it: trained contrastively and evaluated
+zero-shot, the same readout is worth $+10.5$ Spearman on STS12 and $-15.5$
+max-AP on TwitterSemEval2015. The harm belongs to the setting, not to the
+operator. Its effect size on STS-B agrees to within $0.2$ Spearman
 between BERT and RoBERTa. Stage C, M\"obius message passing, is the part that
 helps --- $+1.69$ MCC on CoLA over $65$ seeds, $55/10$, and nominally positive
 in all five settings it has been run in --- but the powered factorial that was
@@ -1645,18 +1673,71 @@ roughly $20$ days. The MTEB side is cheap to \emph{evaluate} (all seven tasks
 take about eight minutes) but requires building the MS MARCO contrastive stage
 first.
 
-\TODO{This table is superseded but not yet replaceable. The 30 August launch
-failed on a launcher path bug (Appendix~\ref{app:audit}), and the corrected
-pipeline was relaunched on 31 August as a full campaign: six arms (baseline, A,
-B, C, AC, ABC) $\times$ $15$ seeds $\times$ three backbones, on the original's
-\emph{Table 3} task list, every name resolved against the installed
-\texttt{mteb} registry rather than guessed. The first ten BERT baseline seeds
-already show what the contrastive stage is worth: on the two tasks common to
-both task lists, STS12 goes $30.02 \rightarrow 41.15$ and SciFact
-$13.93 \rightarrow 19.69$. Seed standard deviations are $0.26$--$1.55$, so
-unlike RTE this benchmark can resolve the effects at issue --- five of the
-seven tasks are better powered than BERT CoLA. Replace this table when the
-campaign lands; do not amend it.}
+\subsection{MTEB with a pooler that was actually trained}
+\label{app:mteb3}
+
+The corrected pipeline was relaunched on $31$ August as a full campaign: six
+arms $\times$ $15$ shared seeds $\times$ three backbones, on the original's
+\emph{Table 3} task list, every task name resolved against the installed
+\texttt{mteb} registry rather than guessed. BERT is complete for five of the six
+arms; ABC stands at $14/15$ seeds and two backbones are still running.
+
+The contrastive stage is worth a great deal on its own: on the two tasks common
+to both task lists, the baseline moves $30.02 \rightarrow 41.21$ on STS12 and
+$13.93 \rightarrow 19.72$ on SciFact. Table~\ref{tab:docmteb} was measuring
+random initialisation, as its caption says.
+
+\begin{table}[h]
+\caption{MTEB, the original's Table 3 task list, BERT-base, $15$ shared seeds,
+$\times100$. The pooler is contrastively trained on MS MARCO before each
+evaluation. The first column is the absolute baseline mean; the rest are paired
+differences against it on the same seeds. $\dagger$ significant on both tests
+uncorrected, $\ddagger$ also after Bonferroni over the four arms
+($\alpha=0.0125$; it becomes $0.01$ when ABC lands). The seven metrics are not
+commensurable --- accuracy, ndcg@$10$, v-measure, map@$1000$, cosine-Spearman,
+max-AP --- so \emph{no row average is given}, and for the same reason we drop
+the ``MTEB mean'' row that Table~\ref{tab:docmteb} carried.}
+\label{tab:mteb3}
+\begin{center}
+\small
+\begin{tabular}{lccccc}
+\toprule
+Task (metric) & baseline & A & B & C & AC \\
+\midrule
+EmotionClassification (acc.)   & 34.90 & $+0.27^{\dagger}$ & $-3.04^{\ddagger}$ & $+0.26$ & $+0.39$ \\
+SciFact (ndcg@10)              & 19.72 & $+0.04$ & $\mathbf{+3.86}^{\ddagger}$ & $-1.95^{\ddagger}$ & $-1.87^{\dagger}$ \\
+RedditClustering (v-meas.)     & 35.92 & $+0.21$ & $-0.23$ & $-0.64$ & $-0.55$ \\
+AskUbuntuDupQuestions (map)    & 48.06 & $+0.11$ & $-0.51^{\dagger}$ & $-0.18$ & $-0.07$ \\
+STS12 (Spearman)               & 41.21 & $+0.43$ & $\mathbf{+10.46}^{\ddagger}$ & $-1.79$ & $-1.68$ \\
+TwitterSemEval2015 (max-AP)    & 52.81 & $+0.10$ & $\mathbf{-15.54}^{\ddagger}$ & $-0.64$ & $-0.67^{\dagger}$ \\
+SummEval (Spearman)            & 29.44 & $-0.05$ & $-1.22^{\dagger}$ & $+0.30$ & $+0.23$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\paragraph{This benchmark can resolve the effects at issue.} Baseline seed
+standard deviations are $0.28$--$1.50$, giving minimum detectable effects of
+$0.21$--$1.12$; five of the seven tasks are better powered than BERT CoLA
+($1.153$) and all seven are far better powered than RTE ($2.064$). Unlike
+Table~\ref{tab:docmteb}, nothing here is excused by sample size.
+
+\paragraph{Two of our headline claims change shape here, and one of them
+badly.} Stage B, which is uniformly harmful on GLUE, is the \emph{largest
+effect in either direction} on MTEB: $+10.46$ Spearman on STS12 and $+3.86$
+ndcg on SciFact, both $15/15$ seeds positive, against $-15.54$ max-AP on
+TwitterSemEval2015 and $-3.04$ accuracy on EmotionClassification, both $0/15$.
+All four survive Bonferroni. Stage C, the one stage that helps on GLUE, is
+nominally negative on five of the seven tasks and significantly negative on
+SciFact ($-1.95$, $2/13$). Stage A behaves as it does everywhere else: seven
+small positives, one of them ($+0.27$ on EmotionClassification) significant
+uncorrected, none after correction.
+
+We do not read this as overturning the GLUE results --- the training regime is
+different in kind (contrastive on MS MARCO then zero-shot, against supervised
+fine-tuning on the target task), and the same arm can reasonably behave
+differently under the two. What it does overturn is the \emph{scope} of the
+claim, and \S\ref{sec:stageB} is restated accordingly.
 
 \section{Notes for reproducers}
 \label{app:defects}
@@ -1859,6 +1940,13 @@ three of the four moved a claim.
       it was tuned alongside, and that we cannot isolate curvature as the cause.
       Resolving the interaction at its observed size would need roughly
       $1{,}300$ seeds, which we will not run.
+\item \textbf{Stage B's harm is regime-specific, and we found that out late.}
+      On MTEB with a contrastively trained pooler the same readout is worth
+      $+10.46$ on STS12 and $-15.54$ on TwitterSemEval2015, both Bonferroni
+      significant (Appendix~\ref{app:mteb3}). We have no account of which task
+      property predicts the sign, and with seven tasks we cannot get one. Every
+      Stage B statement in this paper is therefore scoped to supervised
+      fine-tuning on the target task.
 \item \textbf{The decoder's B and C arms cannot be tested against the decoder
       baseline.} They were run as a separate two-arm campaign with no baseline
       of its own, so every delta for them splices across campaigns
