@@ -513,24 +513,8 @@ not.} The search had given C a $3.6\times$ denser graph than the baseline
 the gain mixes geometry with those choices. We ran the $2\times2$ that separates
 them, all four cells inside one campaign, at the $65$ seeds our own power
 calculation said were needed to resolve the interaction
-(Table~\ref{tab:factorial}). The result is that the interaction is not there:
-
-\begin{center}
-\small
-\begin{tabular}{lrrrc}
-\toprule
-Component of Stage C's CoLA gain & $\Delta$ & sd & $t$ & sign $p$ \\
-\midrule
-geometry alone (curvature, at the baseline's own graph) & $+0.534$ & 2.60 & $1.65$ & $0.457$ \\
-configuration alone (denser graph, smaller net)         & $\mathbf{+0.880}$ & 3.00 & $2.36$ & $0.082$ \\
-interaction                                             & $+0.271$ & 3.50 & $0.62$ & $0.620$ \\
-\midrule
-total                                                   & $\mathbf{+1.685}$ & 2.30 & $\mathbf{5.91}$ & $\mathbf{1{\times}10^{-8}}$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Three things follow. The total is now much stronger than the $n=15$ campaign
+(Table~\ref{tab:factorial}). The result is that the interaction is not there.
+Table~\ref{tab:decomp} gives the decomposition; three things follow from it. The total is now much stronger than the $n=15$ campaign
 suggested: $+1.69$ MCC with $55$ of $65$ seeds positive, significant on both
 tests by a wide margin. The \emph{largest} component is no longer the curvature
 but the graph-and-architecture configuration ($+0.88$ against $+0.53$), and
@@ -557,23 +541,8 @@ $2/13$, Bonferroni; Appendix~\ref{app:mteb3}).
 \label{sec:interaction}
 
 Stage B's harm is stable; what happens when the hyperbolic GNN is added on top
-of it is not. Adding C to B rescues the arm in two settings and worsens it in
-two others:
-
-\begin{center}
-\small
-\begin{tabular}{lccc}
-\toprule
-Setting & B alone & BC & effect of adding C \\
-\midrule
-BERT STS-B      & $-1.07$ & $-1.24$ & worse \\
-RoBERTa STS-B   & $-1.26$ & $-0.26$ & rescues \\
-BERT CoLA       & $-1.26$ & $+0.22$ & rescues \\
-RoBERTa CoLA    & $-0.37$ & $-2.16$ & much worse \\
-TinyLlama STS-B$^{\S}$ & $-1.16$ & $-1.17$ & no effect \\
-\bottomrule
-\end{tabular}
-\end{center}
+of it is not. Adding C to B rescues the arm in two settings, worsens it in two
+others, and does nothing in a fifth (Table~\ref{tab:bxc}).
 
 The extremes are not noise: BC and ABC on RoBERTa CoLA lose $2.16$ and $3.31$
 MCC and both survive Bonferroni, while the same two arms on RoBERTa STS-B are
@@ -1058,26 +1027,32 @@ Seeds & Aggregated & Selected over & CoLA MCC \\
 
 \begin{table}[h]
 \caption{Matched-estimator comparison: best score at \textsc{Glot}'s own seed
-($42$) over \textsc{Glot}'s own grid, $78$ configurations per task, so both
-columns are computed the same way.}
+($42$) over \textsc{Glot}'s own grid, $68$ configurations per task, so both
+columns are computed the same way. The selected configuration is given so the
+row can be re-run; $K$ is depth, $h$ the GNN width.}
 \label{tab:repro}
 \begin{center}
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcccl}
 \toprule
-Task & ours & published & $\Delta$ \\
+Task & ours & published & $\Delta$ & selected configuration \\
 \midrule
-CoLA (MCC)       & \textbf{50.52} & 47.49 & $+3.03$ \\
-RTE (acc.)       & \textbf{59.57} & 59.21 & $+0.36$ \\
-STS-B (Spearman) & 82.99 & 83.86 & $-0.87$ \\
+CoLA (MCC)       & \textbf{50.52} & 47.49 & $+3.03$ & $\tau{=}0.3$, $K{=}4$, $h{=}256$, lr $10^{-3}$, jk\,=\,max \\
+RTE (acc.)       & \textbf{59.57} & 59.21 & $+0.36$ & $\tau{=}0.1$, $K{=}4$, $h{=}128$, lr $10^{-3}$, jk\,=\,max \\
+STS-B (Spearman) & 82.99 & 83.86 & $-0.87$ & $\tau{=}0.3$, $K{=}4$, $h{=}64$, lr $2{\times}10^{-4}$, jk\,=\,cat \\
 \bottomrule
 \end{tabular}
 \end{center}
 \end{table}
 
 The published $\tau$-sensitivity curve (their Table 8) cannot be read as a
-$\tau$ effect: it spans $7.87$ MCC on CoLA, while we measure a spread of $5.46$
-across seeds at \emph{fixed} $\tau$.
+$\tau$ effect. On CoLA it spans $7.87$ MCC ($39.62 \rightarrow 47.49$) and on
+RTE $8.31$ ($50.90 \rightarrow 59.21$), but we measure a spread of $5.46$ across
+seeds at \emph{fixed} $\tau$ on CoLA ($42.71 \rightarrow 48.17$), and $11.92$
+across the $68$ configurations at \emph{fixed} seed $42$ on RTE --- larger than
+the published $\tau$ range it is meant to explain. Both published rows are flat
+with a single spike, and in each case that spike is the value promoted to their
+Table~1.
 
 \section{Main results}
 \label{app:results}
@@ -1287,16 +1262,40 @@ configuration rather than the curvature.}
 \label{tab:decomp}
 \begin{center}
 \small
-\begin{tabular}{lrrrc}
+\begin{tabular}{lrrrcc}
 \toprule
-Component & $\Delta$ & sd & $t$ & p/n \\
+Component & $\Delta$ & sd & $t$ & sign $p$ & p/n \\
 \midrule
-geometry alone (at base config)    & $+0.534$ & 2.60 & $1.65$ & 36/29 \\
-configuration alone (Euclidean MP) & $+0.880$ & 3.00 & $2.36$ & 40/25 \\
-interaction                        & $+0.271$ & 3.50 & $0.62$ & 35/30 \\
+geometry alone (at base config)    & $+0.534$ & 2.60 & $1.65$ & $0.457$ & 36/29 \\
+configuration alone (Euclidean MP) & $+0.880$ & 3.00 & $2.36$ & $0.082$ & 40/25 \\
+interaction                        & $+0.271$ & 3.50 & $0.62$ & $0.620$ & 35/30 \\
 \midrule
 \textbf{total} (C config, hyp.\ $-$ base config, Eucl.)
-                                   & $\mathbf{+1.685}$ & 2.30 & $\mathbf{5.91}$ & \textbf{55/10} \\
+                                   & $\mathbf{+1.685}$ & 2.30 & $\mathbf{5.91}$ & $\mathbf{1{\times}10^{-8}}$ & \textbf{55/10} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\caption{Adding Stage C on top of Stage B, across every setting where both
+arms were run. Paired differences against each backbone's own baseline, from
+Table~\ref{tab:verdict}. The sign of the change is not stable across task or
+backbone. $\S$ marks the decoder row, whose two arms come from different
+campaigns (Appendix~\ref{app:decoder}) and which is therefore the weakest of
+the five.}
+\label{tab:bxc}
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+Setting & B alone & BC & effect of adding C \\
+\midrule
+BERT STS-B      & $-1.07$ & $-1.24$ & worse \\
+RoBERTa STS-B   & $-1.26$ & $-0.26$ & rescues \\
+BERT CoLA       & $-1.26$ & $+0.22$ & rescues \\
+RoBERTa CoLA    & $-0.37$ & $-2.16$ & much worse \\
+TinyLlama STS-B$^{\S}$ & $-1.16$ & $-1.17$ & no effect \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1585,6 +1584,25 @@ stands.
 \paragraph{Layer choice overfits.} Layer $8$ beat layer $12$ by $+4.62$ MCC on
 CoLA but only $+0.25$ on STS-B, and lost on RTE ($-0.36$) and MRPC ($-0.46$).
 
+\paragraph{A structural prior does not help either.} Since CoLA, MRPC and RTE
+are flat for every geometric arm, we also asked whether a \emph{structural}
+prior helps where a similarity prior does not: positional edges joining tokens
+with $|i-j| \leq w$ (\texttt{POS}), positional edges only
+(\texttt{POS\_ONLY}), their union with Stage A (\texttt{A\_POS}), and a $k$-NN
+graph (\texttt{KNN}). All four were run on BERT CoLA at the same $15$
+confirmation seeds as the rest of the paper: \texttt{POS} $46.10 \pm 1.52$,
+\texttt{A\_POS} $46.06 \pm 1.63$, \texttt{KNN} $45.75 \pm 1.44$, and
+\texttt{POS\_ONLY} $46.61 \pm 0.85$ at $n=4$ only.
+
+\emph{These are absolute scores, not differences.} That campaign tuned a
+baseline but never ran one at the confirmation seeds, so differencing against
+the wide campaign's $45.37$ would be the cross-campaign splice of
+Appendix~\ref{app:determinism}, and we do not do it. Taken at face value the
+four sit within about $0.7$ MCC of each other and of every geometric arm on
+that task, which is the same flatness the hyperbolic arms show; we record the
+experiment so that ``did you try a non-geometric graph?'' has an answer, and
+draw no conclusion from it.
+
 \section{A retracted result of our own}
 \label{app:narrow}
 
@@ -1841,6 +1859,12 @@ kind of error this paper criticises in others.
       uncorrected on STS-B ($+0.32$, $t=3.13$, $p=0.035$) and was not marked.
 \item ``Jumping-knowledge mode is uniform within a task'' holds on CoLA and
       STS-B and fails on MRPC and RTE, where one arm each departs.
+\item The matched-estimator sweep of Table~\ref{tab:repro} was described as
+      $78$ configurations per task. The three sweep files hold $68$ each. The
+      three scores themselves ($50.52$, $59.57$, $82.99$) reproduce exactly, so
+      only the budget was misstated --- but it was misstated in our favour,
+      since a larger claimed grid makes the matched comparison look more
+      thorough than it was.
 \item Most consequentially, the $2\times2$ of Table~\ref{tab:factorial} spliced
       two cells from one campaign into two from another. The factorial has since
       re-run the shared cell and disagrees with the original on all $15$ seeds
