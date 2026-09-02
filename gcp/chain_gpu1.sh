@@ -34,10 +34,45 @@ say "  tl/mrpc should read ABORT (cache marker parked deliberately):"
 grep -E 'ABORT|SKIP|DONE|FAILED' "$QLOG" | tail -6 | sed 's/^/    /' | tee -a "$LOG"
 
 # ---- 2. take the parity fix -------------------------------------------------
-say "pulling the control-parity fix"
+# The BGU checkout carries queue_table1_gap.sh and prewarm_t1.sh as UNTRACKED
+# files, and both are tracked (and therefore incoming) upstream. git refuses to
+# fast-forward over an untracked file, so a bare `git pull --ff-only` fails with
+# "untracked working tree files would be overwritten". We park them instead of
+# deleting them: queue_table1_gap.sh is the exact script that produced the
+# Table-1 results, and the paper releases the scripts behind its tables. By the
+# time we get here the queue has finished, so moving it is safe -- doing this
+# any earlier would pull the script out from under a running job.
+say "preparing the working tree for a fast-forward"
 git -C "$ROOT" fetch --all --quiet
-git -C "$ROOT" pull --ff-only 2>&1 | tail -3 | sed 's/^/    /' | tee -a "$LOG"
+UP=$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
+say "upstream is $UP"
+STAMP=$(date +%Y%m%d-%H%M%S)
+git -C "$ROOT" diff --name-only "HEAD..$UP" 2>/dev/null | while read -r f; do
+    [ -z "$f" ] && continue
+    if [ -e "$ROOT/$f" ] && ! git -C "$ROOT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+        mv "$ROOT/$f" "$ROOT/$f.local-$STAMP"
+        say "  parked untracked $f -> $f.local-$STAMP"
+    fi
+done
+
+say "pulling the control-parity fix"
+if ! git -C "$ROOT" pull --ff-only 2>&1 | tail -3 | sed 's/^/    /' | tee -a "$LOG"; then
+    say "PULL FAILED -- chain stops rather than running the old code."
+    exit 1
+fi
 say "now at $(git -C "$ROOT" log --oneline -1)"
+
+# the parked copies should be identical to what just arrived; say so either way
+for f in queue_table1_gap.sh prewarm_t1.sh; do
+    P="$ROOT/$f.local-$STAMP"
+    if [ -f "$P" ] && [ -f "$ROOT/$f" ]; then
+        if diff -q "$P" "$ROOT/$f" >/dev/null 2>&1; then
+            say "  $f: parked copy is identical to the pulled version"
+        else
+            say "  $f: parked copy DIFFERS from the pulled version (kept at $P)"
+        fi
+    fi
+done
 
 # ---- 3. refuse to continue unless parity actually holds ---------------------
 # The whole point of the corrective factorial is that the two arms differ in
