@@ -102,9 +102,16 @@ def main():
     args = parse_args()
     seeds = args.seeds
     res = ResultsCSV(args.out)
-    todo = [(a, ARMS[a][0], ARMS[a][1], s) for a in args.arms for s in seeds]
+    # SEED-MAJOR order: all four cells at seed 1, then all four at seed 2, ...
+    # Arm-major would finish one whole cell before starting the next, so a job
+    # killed partway leaves complete ARMS and no complete pairs, and any drift
+    # over the run's lifetime (thermal, driver, cache eviction) would land on
+    # the cells unequally -- confounded with the very contrast being measured.
+    # Seed-major keeps every 2x2 block contemporaneous and leaves the partial
+    # result analysable at whatever seed count was reached.
+    todo = [(a, ARMS[a][0], ARMS[a][1], s) for s in seeds for a in args.arms]
     print(f"cells={args.arms} seeds={len(seeds)} runs={len(todo)} "
-          f"out={args.out}", flush=True)
+          f"order=seed-major out={args.out}", flush=True)
     done = 0
     for arm, cfg, trial, seed in todo:
         key = f"{TARGET}|{MODEL}|{SETTING}|{arm}|t{trial}|s{seed}|confirm"
