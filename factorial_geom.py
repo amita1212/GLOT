@@ -48,11 +48,27 @@ from campaign import run_one                      # noqa: E402
 from exp_runner import ResultsCSV, PAPER_METRIC   # noqa: E402
 
 TARGET, MODEL, TASK, SETTING = "glue", "bert-base-uncased", "cola", "cola_wide"
-DEFAULT_OUT = os.path.join(HERE, "results", "factorial_geom_cola.csv")
+DEFAULT_OUT = os.path.join(HERE, "results", "factorial_geom_cola_parity.csv")
 
 # exact confirmed configs, transcribed from results/campaign_wide_cola.csv
+#
+# CONTROL PARITY (see test_edge_parity.py). Two asymmetries made the earlier
+# n=65 factorial a contrast in more than curvature, and both are closed here:
+#
+#   * self-loops -- the hyperbolic layers added without removing first, so each
+#     token carried twice the self-weight its Euclidean control did. Fixed in
+#     hyperbolic_layers.py; the test re-verifies 105 vs 105 on the real graph.
+#   * edge attributes -- the Euclidean GAT is GATConv(edge_dim=1) fed a constant
+#     1.0, which is NOT inert because GATConv adds it before a leaky_relu.
+#     `gat_edge_attr: "0"` drops that path, taking the Euclidean layer from
+#     98,944 to 98,688 parameters against the hyperbolic layer's 98,689.
+#
+# Both cells of every contrast therefore differ in curvature alone. This changes
+# the Euclidean arm relative to the wide campaign, so all four cells must be run
+# fresh into this file; nothing here may be compared against an older campaign.
 SHARED = {"graph_metric": "cosine", "jk_mode": "max", "lr": "0.001",
-          "scorer_hidden": "128", "weight_decay": "5e-05"}
+          "scorer_hidden": "128", "weight_decay": "5e-05",
+          "gat_edge_attr": "0"}
 BASE_CFG = {**SHARED, "gat_hidden_dim": "256", "num_layers": "4",
             "proj_dim": "128", "tau_quantile": "0.1"}
 C_CFG = {**SHARED, "gat_hidden_dim": "128", "num_layers": "2",

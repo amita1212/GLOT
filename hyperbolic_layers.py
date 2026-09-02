@@ -40,7 +40,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import add_self_loops, softmax as pyg_softmax
+from torch_geometric.utils import add_self_loops, remove_self_loops, softmax as pyg_softmax
 
 try:
     from torch_scatter import scatter_add
@@ -212,6 +212,7 @@ class HyperbolicGCNConv(MessagePassing):
         # GCN-style symmetric normalisation with self loops.
         if edge_weight is not None:
             edge_weight = edge_weight.view(-1).float()
+        edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
         edge_index, edge_weight = add_self_loops(
             edge_index, edge_weight, fill_value=1.0, num_nodes=n
         )
@@ -267,6 +268,7 @@ class HyperbolicGATConv(MessagePassing):
         h = self.lin(x_ball)                    # (n, out_dim) on the ball
         ht = self.ball.logmap0(h)               # (n, out_dim) tangent
 
+        edge_index, _ = remove_self_loops(edge_index)
         edge_index, _ = add_self_loops(edge_index, num_nodes=n)
 
         # GAT-style additive attention logits (source/target projections).

@@ -335,6 +335,18 @@ class GLOT(nn.Module):
         learnable_curvature=False,# make the Poincare ball curvature a trainable parameter
         gnn_input_clip=0.0,       # Stage C: clip token norm before lifting onto the ball (0=off)
         gnn_input_scale=False,    # Stage C: learnable input scale before the entry exp map
+        gat_edge_attr=True,       # PARITY KNOB. The Euclidean GATConv is built with
+                                  # edge_dim=1 and fed edge_attr, while HyperbolicGATConv
+                                  # accepts edge_weight and ignores it -- so a Euclidean
+                                  # vs hyperbolic contrast varies the edge-attribute path
+                                  # as well as the curvature. Even at edge_weight_mode=
+                                  # "binary", where every attribute is exactly 1.0, the
+                                  # path is not inert: GATConv adds alpha_edge BEFORE a
+                                  # leaky_relu, which is not translation-equivariant, so
+                                  # the constant does not cancel in the softmax (measured
+                                  # relative output change 5.7e-3). Set False to drop the
+                                  # path from the Euclidean arm and match the hyperbolic
+                                  # one. True reproduces every run in the paper.
     ):
         super().__init__()
 
@@ -369,6 +381,7 @@ class GLOT(nn.Module):
         self.readout_clip = float(readout_clip)
         self.learnable_curvature = bool(learnable_curvature)
         self.gnn_input_clip = float(gnn_input_clip)
+        self.gat_edge_attr = bool(gat_edge_attr)
 
         # A single Poincare ball is shared by Stage B (readout) and Stage C (GNN).
         # It is only instantiated when a hyperbolic component is requested, so the
@@ -404,7 +417,11 @@ class GLOT(nn.Module):
                 else:
                     layer = HyperbolicGCNConv(last_dim, hidden_dim, self.ball)
             elif conv == "gat":
-                layer = GATConv(last_dim, hidden_dim, edge_dim=1)
+                # edge_dim=1 only when the edge-attribute path is enabled; omitting
+                # it also removes GATConv's lin_edge/att_edge parameters, so the
+                # Euclidean and hyperbolic attention differ in curvature alone.
+                layer = (GATConv(last_dim, hidden_dim, edge_dim=1)
+                         if self.gat_edge_attr else GATConv(last_dim, hidden_dim))
             elif conv == "gcn":
                 layer = GCNConv(last_dim, hidden_dim)
             elif conv == "gine":
@@ -563,7 +580,8 @@ class GLOT(nn.Module):
             h = x
             for conv in self.convs:
                 if isinstance(conv, GATConv):
-                    h = conv(h, edge_index, edge_attr=edge_weight)
+                    h = conv(h, edge_index,
+                             edge_attr=edge_weight if self.gat_edge_attr else None)
                 elif isinstance(conv, GCNConv):
                     h = conv(h, edge_index, edge_weight=edge_weight.squeeze())
                 elif isinstance(conv, GINConv):
@@ -884,6 +902,7 @@ def build_pooler(name: str, hidden_size: int, args) -> nn.Module:
             learnable_curvature=bool(getattr(args, "learnable_curvature", 0)),
             gnn_input_clip=float(getattr(args, "gnn_input_clip", 0.0)),
             gnn_input_scale=bool(getattr(args, "gnn_input_scale", 0)),
+            gat_edge_attr=bool(int(getattr(args, "gat_edge_attr", 1))),
         )
     else:
         raise ValueError(f"Unknown pooling method: {name}")
@@ -2400,6 +2419,15 @@ def build_argparser():
                    help="Stage C: clip token norm before the entry exp map (0=off). Fixes boundary saturation.")
     p.add_argument("--gnn_input_scale", type=int, default=0,
                    help="Stage C: use a learnable input scale before the entry exp map.")
+    p.add_argument("--gat_edge_attr", type=int, default=1,
+                   help="1 (default, reproduces the paper): build the Euclidean GAT with "
+                        "edge_dim=1 and feed it edge_attr. 0: drop the edge-attribute path "
+                        "so the Euclidean and hyperbolic GATs differ in curvature ALONE. "
+                        "HyperbolicGATConv ignores edge_weight, and the constant attribute "
+                        "the binary graph supplies is not inert because GATConv adds it "
+                        "before a leaky_relu -- so any Euclidean-vs-hyperbolic contrast run "
+                        "at the default varies two things at once. Use 0 for the corrective "
+                        "Stage C factorial.")
     p.add_argument("--arm", type=str, default="",
                    help="Optional label for the ablation arm (baseline|A|B|C|ABC); recorded in results CSV.")
     p.add_argument("--results_csv", type=str, default="",
