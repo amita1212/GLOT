@@ -99,60 +99,74 @@ there too.}
 
 \begin{center}
 \footnotesize
-\begin{tabular}{p{0.27\textwidth}p{0.40\textwidth}p{0.24\textwidth}}
+\begin{tabular}{p{0.26\textwidth}p{0.40\textwidth}p{0.25\textwidth}}
 \toprule
 Experiment & What it would settle & Status \\
 \midrule
+\multicolumn{3}{l}{\emph{Running or queued. Two machines; everything below
+lands within about two days.}} \\
+\midrule
+TinyLlama CoLA, $9$ arms
+  & The first test of any stage on a decoder task other than STS-B, and the
+    last decoder column we intend to fill
+  & \emph{running}, $50/135$ confirmation rows, $\approx$13\,h left \\
+MTEB, RoBERTa block: $6$ arms $\times$ $15$ seeds
+  & Whether Stage B's regime reversal is BERT-specific --- the readout flips
+    from reliably harmful under fine-tuning to the two largest effects in the
+    paper under contrastive training, and one backbone cannot separate
+    ``regime'' from ``BERT''
+  & \emph{running}. It had not run at all: the queue passed
+    \texttt{roberta-base} while the driver is keyed on
+    \texttt{FacebookAI/roberta-base}, so all $90$ units were skipped in under
+    a second (Appendix~\ref{app:mteb3}). Fixed and relaunched;
+    $\approx$42\,h, measured from the BERT block \\
 \textbf{Corrective Stage C factorial}: $2\times2$, $65$ seeds, all four cells
 fresh, control parity closed
   & The only experiment that can attribute Stage C's CoLA gain to curvature.
-    The $n{=}65$ factorial already reported ran before both parity defects of
-    Appendix~\ref{app:defects} were fixed, so its geometry term is not a
+    The $n{=}65$ factorial ran before both parity defects of
+    Appendix~\ref{app:defects} were closed, so its geometry term is not a
     curvature measurement
-  & \emph{next on GPU 1}; code fixed, parity verified by
-    \texttt{test\_edge\_parity.py}, seed-major, $\approx$10\,h measured from
+  & \emph{queued}, first job after CoLA. Parity verified by
+    \texttt{test\_edge\_parity.py}; seed-major; $\approx$10\,h measured from
     the previous run's $260$ cells \\
-Matched decoder STS-B campaign: baseline, B, C, $15$ seeds, one file
+Matched decoder STS-B: baseline, B, C, $15$ seeds, one file
   & Makes the decoder B and C deltas admissible. They currently subtract a
-    baseline from a campaign four days older, which is the splice
-    Appendix~\ref{app:determinism} forbids, and no arm is shared between the
-    two campaigns so the drift cannot even be bounded
-  & \emph{queued behind the factorial}, $\approx$10\,h at the measured
-    $0.22$\,h/run. Configurations are already selected, so no re-tuning \\
-MTEB, RoBERTa block: $6$ arms $\times$ $15$ seeds
-  & Whether Stage B's regime reversal is BERT-specific. The BERT block shows
-    the readout flipping from reliably harmful under fine-tuning to the two
-    largest effects in the paper under contrastive training
-  & \emph{blocked by a name bug, not compute}: the queue passes
-    \texttt{roberta-base} and the driver is keyed on
-    \texttt{FacebookAI/roberta-base}, so all $90$ runs were skipped silently
-    (Appendix~\ref{app:mteb3}). One-line fix; $\approx$42\,h measured from the
-    BERT block \\
-SST-2 reduced design (baseline, B, C, BC; $15$ seeds)
-  & The small-data confound in Appendix~\ref{app:limitations} --- the one
-    remaining way Stage B's negative could be an artifact
-  & \emph{last in the queue}: no script, and the cache must be built first
-    ($\approx$13\,h, $26$\,GB) \\
-TinyLlama CoLA, $9$ arms
-  & The first test of any stage on a decoder task other than STS-B, and the
-    last empty column of the decoder block we intend to fill
-  & \emph{running}, $44/135$ confirmation rows, $\approx$15\,h left \\
+    baseline from a campaign four days older --- the splice
+    Appendix~\ref{app:determinism} forbids --- and no arm is shared between the
+    two campaigns, so the drift cannot even be bounded
+  & \emph{queued} behind the factorial, $\approx$10\,h at the measured
+    $0.22$\,h/run. Configurations are lifted from the existing confirmed rows,
+    so nothing is re-tuned \\
+SST-2 reduced design: baseline, B, C, BC; $15$ seeds
+  & The last live confound. Stage B fails by amplifying seed variance, and
+    variance shrinks with data, so the paper's firmest result may be a
+    small-data artifact. SST-2 is $67{,}349$ examples, $7.9\times$ CoLA, and is
+    \emph{not} one of the tasks the original caps at \texttt{train[:20000]}
+  & \emph{queued} last, after a cache build. $13$--$20$\,h: our fitted cost
+    model says $785$\,s a run and the worker script assumes $1{,}200$, and the
+    run will settle which. Reduced designs cannot rank arms --- see below \\
+\midrule
+\multicolumn{3}{l}{\emph{Deliberately not scheduled. These are decisions, not
+gaps we ran out of time for.}} \\
+\midrule
 TinyLlama MRPC, $9$ arms
-  & Nothing we can currently identify. MRPC's whole nine-arm spread is
-    $0.37$ F1 on BERT and $0.33$ on RoBERTa against a minimum detectable
-    effect of $0.317$, so a third such column would almost certainly be a
-    third null
-  & \emph{deliberately not scheduled}. The $\approx$22\,h buys a fourth
-    backbone-by-task cell of noise; the matched decoder STS-B campaign costs
-    less and repairs an inadmissible result. Those cells stay \PEND{} \\
+  & Nothing we can identify. MRPC's whole nine-arm spread is $0.37$ F1 on BERT
+    and $0.33$ on RoBERTa against a minimum detectable effect of $0.317$, so a
+    third such column would be a third null
+  & \emph{retired}. The $\approx$22\,h buys a fourth backbone-by-task cell of
+    noise, while the matched decoder campaign costs less and repairs an
+    inadmissible result. Those cells are dashes, not \PEND{} \\
+MTEB, TinyLlama block
+  & A third backbone for the regime question
+  & \emph{lowest priority}: $\approx$41\,h and the RoBERTa block answers the
+    same question first. Runs only if the queue reaches it \\
 Mean / Max / \texttt{[CLS]} / AdaPool on GLUE
   & Would let Table~\ref{tab:absolute} reproduce the \emph{content} of the
     original's Table 1 rather than only its layout
   & reachable since the pooler was made configurable; not run \\
-IMDB, arms baseline, A, C, AC, $5$ seeds
-  & A long-text test of Stages A and C. At $n{=}5$ this is a lead, not a
-    result
-  & \emph{not} queued; cached states are $79$\,GB \\
+IMDB, arms baseline, A, C, AC
+  & A long-text test of Stages A and C
+  & $\approx$20 days at $15$ seeds, $79$\,GB of cache. Out of reach \\
 Related work
   & \S\ref{sec:related}
   & drafted; venues and pages unconfirmed for the entries marked so in
@@ -177,14 +191,17 @@ second-largest positive in the paper --- which strengthens the reading that the
 readout, not the graph or the message passing, sets the outcome in that regime
 (Appendix~\ref{app:mteb3}).}
 
-\textcolor{red}{What remains open: (i) SST-2, the one way Stage B's negative
-could still be a small-data artifact, which is scheduled last and so remains a
-live confound; (ii) whether Stage A's CoLA positive survives on a second task
-at $n{=}50$ --- it is the only setting of ten in which Stage A separates;
-(iii) the RoBERTa MTEB block, which did not run because of a model-name
-mismatch rather than for any scientific reason, and which is the test of
-whether Stage B's regime reversal is BERT-specific; and (iv) the decoder's B
-and C arms, which stay inadmissible until the matched campaign lands.}
+\textcolor{red}{What remains open, and what will close it. (i) Stage C's
+attribution: the corrective factorial is queued and is the only run that can
+return a curvature estimate. (ii) Whether Stage B's regime reversal is
+BERT-specific: the RoBERTa MTEB block is running, and until it lands one
+backbone cannot separate ``regime'' from ``BERT''. (iii) The small-data
+confound on Stage B: SST-2 is queued last. (iv) The decoder's B and C arms,
+inadmissible until the matched campaign lands. All four are scheduled and
+should report within about two days. What is \emph{not} scheduled, and will
+therefore stand as a limitation in any submitted version: whether Stage A's
+CoLA positive survives on a second task at $n{=}50$, the bag-of-tokens rows of
+Table~\ref{tab:absolute}, and IMDB.}
 
 %-------------------------------------------------------------------------
 \section{Introduction}
@@ -698,14 +715,16 @@ degree-based (HGCN) or attention (HGAT).
 
 \begin{figure}[h]
 \begin{center}
-\includegraphics[width=\textwidth]{glot}
+\includegraphics[width=\textwidth]{hyperglot_architecture}
 \end{center}
-\caption{\textsc{Glot}'s pooling pipeline, reproduced from
-\citet{mantri2026glot}. Token states from a frozen backbone are thresholded into
-a graph (Eq.~\ref{eq:adj}), refined by a token-level GNN, and aggregated into a
-single sentence vector $\mathbf{z}$; only the shaded block trains. Each of our
-three changes replaces exactly one depicted component: Stage A the graph, Stage
-B the readout, Stage C the token-GNN.}
+\caption{Stage-wise hyperbolic substitutions in graph-based token pooling. A
+frozen backbone produces token states, which are converted to a sparse token
+graph, refined by token-level message passing, and aggregated into one sentence
+vector. Stage A replaces cosine graph construction with Poincar\'e distance;
+Stage C replaces Euclidean message passing with M\"obius message passing; and
+Stage B replaces the Euclidean attention-weighted sum with an Einstein
+gyro-midpoint. Each stage can be enabled independently or jointly; only the
+pooling head and task head train.}
 \label{fig:overview}
 \end{figure}
 
@@ -1057,15 +1076,15 @@ Backbone & Method & CoLA & STS-B & MRPC & RTE \\
  & quantile $\tau$          & 53.19\,$\pm$1.59 & 83.73\,$\pm$0.29 & --- & --- \\
 \midrule
 \multirow{9}{*}{TinyLlama-1.1B}
- & \textsc{Glot} (baseline) & \PEND & 79.95\,$\pm$0.49 & \PEND & 52.88\,$\pm$2.92 \\
- & A                        & \PEND & 79.99\,$\pm$0.51 & \PEND & 54.42\,$\pm$2.29 \\
- & B                        & \PEND & 78.78$^{\S}$\,$\pm$1.05 & \PEND & 55.86\,$\pm$2.88 \\
- & C                        & \PEND & \textbf{80.24}$^{\S}$\,$\pm$0.51 & \PEND & 52.49\,$\pm$2.56 \\
- & AB                       & \PEND & 76.39\,$\pm$1.87 & \PEND & 54.87\,$\pm$3.00 \\
- & AC                       & \PEND & 80.15\,$\pm$0.54 & \PEND & 57.21\,$\pm$1.57 \\
- & BC                       & \PEND & 78.78\,$\pm$0.95 & \PEND & \textbf{57.21}\,$\pm$1.70 \\
- & ABC                      & \PEND & 75.44\,$\pm$3.58 & \PEND & 55.43\,$\pm$2.96 \\
- & \texttt{no graph}        & \PEND & 79.95\,$\pm$0.48 & \PEND & 52.44\,$\pm$2.89 \\
+ & \textsc{Glot} (baseline) & \PEND & 79.95\,$\pm$0.49 & --- & 52.88\,$\pm$2.92 \\
+ & A                        & \PEND & 79.99\,$\pm$0.51 & --- & 54.42\,$\pm$2.29 \\
+ & B                        & \PEND & 78.78$^{\S}$\,$\pm$1.05 & --- & 55.86\,$\pm$2.88 \\
+ & C                        & \PEND & \textbf{80.24}$^{\S}$\,$\pm$0.51 & --- & 52.49\,$\pm$2.56 \\
+ & AB                       & \PEND & 76.39\,$\pm$1.87 & --- & 54.87\,$\pm$3.00 \\
+ & AC                       & \PEND & 80.15\,$\pm$0.54 & --- & 57.21\,$\pm$1.57 \\
+ & BC                       & \PEND & 78.78\,$\pm$0.95 & --- & \textbf{57.21}\,$\pm$1.70 \\
+ & ABC                      & \PEND & 75.44\,$\pm$3.58 & --- & 55.43\,$\pm$2.96 \\
+ & \texttt{no graph}        & \PEND & 79.95\,$\pm$0.48 & --- & 52.44\,$\pm$2.89 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1131,14 +1150,14 @@ Backbone & Method & CoLA & STS-B & MRPC & RTE \\
  & quantile $\tau$ & $-1.41^{\dagger}$ (2/13) & $-0.15$ (5/10) & --- & --- \\
 \midrule
 \multirow{8}{*}{TinyLlama-1.1B}
- & A   & \PEND & $+0.04$ (9/6) & \PEND & $+1.54$ (10/5) \\
- & B   & \PEND & $-1.16^{\dagger\S}$ (2/13) & \PEND & $+2.99$ (11/4) \\
- & C   & \PEND & $+0.29^{\S}$ (10/5) & \PEND & $-0.38$ (8/7) \\
- & AB  & \PEND & $-3.56^{\ddagger}$ (0/15) & \PEND & $+2.00$ (11/4) \\
- & AC  & \PEND & $+0.21$ (10/5) & \PEND & $+4.33^{\dagger}$ (13/2) \\
- & BC  & \PEND & $-1.17^{\ddagger}$ (1/14) & \PEND & $\mathbf{+4.33}^{\ddagger}$ (14/1) \\
- & ABC & \PEND & $-4.51^{\ddagger}$ (0/15) & \PEND & $+2.55$ (11/4) \\
- & \texttt{no graph} & \PEND & $+0.00$ (8/7) & \PEND & $-0.43$ (5/10) \\
+ & A   & \PEND & $+0.04$ (9/6) & --- & $+1.54$ (10/5) \\
+ & B   & \PEND & $-1.16^{\dagger\S}$ (2/13) & --- & $+2.99$ (11/4) \\
+ & C   & \PEND & $+0.29^{\S}$ (10/5) & --- & $-0.38$ (8/7) \\
+ & AB  & \PEND & $-3.56^{\ddagger}$ (0/15) & --- & $+2.00$ (11/4) \\
+ & AC  & \PEND & $+0.21$ (10/5) & --- & $+4.33^{\dagger}$ (13/2) \\
+ & BC  & \PEND & $-1.17^{\ddagger}$ (1/14) & --- & $\mathbf{+4.33}^{\ddagger}$ (14/1) \\
+ & ABC & \PEND & $-4.51^{\ddagger}$ (0/15) & --- & $+2.55$ (11/4) \\
+ & \texttt{no graph} & \PEND & $+0.00$ (8/7) & --- & $-0.43$ (5/10) \\
 \midrule
 \multicolumn{6}{l}{\emph{On BERT, every arm containing B is negative on CoLA,
 STS-B and MRPC. All four are positive on RTE, none significantly.}} \\
@@ -2086,10 +2105,15 @@ three of the four moved a claim.
 \item \textbf{Every task we ran is small, and that may explain Stage B.} CoLA,
       STS-B, MRPC and RTE have $8{,}551$, $5{,}749$, $3{,}668$ and $2{,}490$
       training examples, and Stage B hurts by amplifying seed variance --- which
-      more data suppresses. A reduced SST-2 design (four arms, confirmation
-      seeds only, reusing the CoLA-selected configuration) costs roughly $13$
-      GPU-hours and $26$\,GB of cache and would settle it. It is the single most
-      valuable experiment this paper is missing, and we did not run it.
+      more data suppresses. SST-2 has $67{,}349$, $7.9\times$ CoLA, and is the
+      cheapest task that can separate the two explanations. It is now queued:
+      four arms, confirmation seeds only, replaying the CoLA-selected
+      configurations. \emph{That is a weaker design and we will report it as
+      one}: because no arm is tuned on SST-2, it can say whether B's harm
+      persists at eight times the data but it cannot rank arms, so its numbers
+      belong here and not in Table~\ref{tab:absolute}. The reduction is applied
+      identically to the baseline and the treatment arms, which is the property
+      that makes the contrast fair. Until it lands the confound stands.
 \item \textbf{\textsc{Bert} RTE is underpowered and contributes nothing.} Its
       minimum detectable effect of $2.06$ accuracy points exceeds every effect
       in that block, and no arm in it is significant. We include the column for
