@@ -104,5 +104,28 @@ say "START matched decoder STS-B: baseline/B/C x 15 seeds, one file"
     > "$ROOT/logs/decoder_matched.log" 2>&1 \
     && say "DONE decoder matched" || say "FAILED decoder matched (see logs/decoder_matched.log)"
 
+# ---- 6. SST-2 reduced design -----------------------------------------------
+# The last live confound: Stage B's harm is variance amplification, and variance
+# shrinks with data, so the paper's firmest result may be a small-data artifact.
+# SST-2 is 67,349 examples, 7.9x CoLA, and is NOT one of the tasks the original
+# caps at train[:20000] -- so this is the full training set and the most
+# expensive thing in the chain.
+#
+# worker_sst2.sh prewarms the cache and then replays the CoLA-selected configs
+# via seed_extend.py, which lifts each arm's confirmed configuration out of
+# campaign_wide_cola.csv rather than hand-transcribing it. The reduction is
+# applied identically to the baseline and the treatment arms, so no arm gets a
+# budget advantage -- but no arm is tuned on SST-2 either, so these numbers can
+# say whether B's harm persists at 8x the data and cannot rank arms. The script
+# says so itself, and the paper must report it as a weaker design.
+say "START SST-2 reduced design: baseline/B/C/BC x 15 seeds (cache build first)"
+if [ ! -f "$ROOT/results/campaign_wide_cola.csv" ]; then
+    say "SKIP SST-2 -- results/campaign_wide_cola.csv missing (config source)"
+else
+    bash "$ROOT/worker_sst2.sh" > "$ROOT/logs/sst2_worker.log" 2>&1 \
+        && say "DONE SST-2" || say "FAILED SST-2 (see logs/sst2_worker.log)"
+fi
+
 say "===== GPU1 CHAIN FINISHED ====="
-say "results/factorial_geom_cola_parity.csv and results/campaign_decoder_stsb_matched.csv"
+say "results/factorial_geom_cola_parity.csv, results/campaign_decoder_stsb_matched.csv,"
+say "results/sst2_reduced.csv"
