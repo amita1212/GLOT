@@ -33,108 +33,432 @@
 }
 
 
-% ---------------------------------------------------------------------------
-% PLACEHOLDERS -- NOT YET VERIFIED. DO NOT SUBMIT AS-IS.
+% ===========================================================================
+% VERIFIED -- fetched 2026-08-29 from the arXiv Atom API (export.arxiv.org)
+% and, for Bergstra & Bengio, from jmlr.org. Title, full author list and
+% year below are transcribed from the fetched record, never from memory.
 %
-% Each entry below records what the citation must support in the text, so the
-% correct paper can be located and substituted. Fields are deliberately left
-% blank rather than guessed.
-% ---------------------------------------------------------------------------
+% VENUE POLICY FOR THIS BLOCK. An entry is typed @inproceedings ONLY when the
+% fetched record's own comment field named the venue. Where the record gave no
+% venue, the entry is left as an arXiv preprint record even if the paper is in
+% fact published -- promoting it would mean guessing. Those are marked
+% "venue not in fetched record" and should be upgraded (with page numbers)
+% before submission.
+% ===========================================================================
 
-% Needed in Sec. Introduction and Sec. Calibration: the direct cause of the
-% calibration failure is that contextual embedding spaces are anisotropic and
-% that the degree of anisotropy differs sharply between models.
-@misc{PLACEHOLDER_anisotropy_contextual_embeddings,
-  title  = {TODO: work establishing anisotropy / cone structure of contextual embeddings},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+% --- (i) Hyperbolic representations and hyperbolic layers -----------------
+
+@misc{nickel2017poincare,
+  title         = {Poincar\'{e} Embeddings for Learning Hierarchical Representations},
+  author        = {Nickel, Maximilian and Kiela, Douwe},
+  year          = {2017},
+  eprint        = {1705.08039},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  note          = {venue not in fetched record}
 }
 
-% Needed in Sec. Artifacts: extreme-norm tokens ("attention sinks" / "massive
-% activations") are what corrupt Euclidean delta-hyperbolicity and mean-based
-% rescaling.
-@misc{PLACEHOLDER_attention_sinks,
-  title  = {TODO: work documenting attention sinks / massive activations in LLMs},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@inproceedings{nickel2018lorentz,
+  title     = {Learning Continuous Hierarchies in the Lorentz Model of Hyperbolic Geometry},
+  author    = {Nickel, Maximilian and Kiela, Douwe},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2018},
+  note      = {arXiv:1806.03417}
 }
 
-% Needed in Sec. Background: definition of Gromov delta-hyperbolicity.
-@misc{PLACEHOLDER_gromov_hyperbolicity,
-  title  = {TODO: source for Gromov delta-hyperbolicity definition},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@misc{ganea2018hyperbolic,
+  title         = {Hyperbolic Neural Networks},
+  author        = {Ganea, Octavian-Eugen and B\'{e}cigneul, Gary and Hofmann, Thomas},
+  year          = {2018},
+  eprint        = {1805.09112},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  note          = {venue not in fetched record}
 }
 
-% Needed in Sec. Stages: Poincare ball embeddings for hierarchical data.
-@misc{PLACEHOLDER_poincare_embeddings,
-  title  = {TODO: Poincare / hyperbolic embeddings of hierarchies},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@misc{gulcehre2018hyperbolicattention,
+  title         = {Hyperbolic Attention Networks},
+  author        = {Gulcehre, Caglar and Denil, Misha and Malinowski, Mateusz and
+                   Razavi, Ali and Pascanu, Razvan and Hermann, Karl Moritz and
+                   Battaglia, Peter and Bapst, Victor and Raposo, David and
+                   Santoro, Adam and de Freitas, Nando},
+  year          = {2018},
+  eprint        = {1805.09786},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.NE},
+  note          = {venue not in fetched record; source of the Klein/Einstein-midpoint aggregation used by Stage B}
 }
 
-% Needed in Sec. Stages: hyperbolic graph neural networks (Mobius message
-% passing), i.e. the basis for Stage C.
-@misc{PLACEHOLDER_hyperbolic_gnn,
-  title  = {TODO: hyperbolic graph neural network formulation},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@inproceedings{chami2019hgcn,
+  title     = {Hyperbolic Graph Convolutional Neural Networks},
+  author    = {Chami, Ines and Ying, Rex and R\'{e}, Christopher and Leskovec, Jure},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2019},
+  note      = {arXiv:1910.12933}
 }
 
-% Needed in Sec. Protocol: justification for equal random-search budget per arm.
-@misc{PLACEHOLDER_random_search_hpo,
-  title  = {TODO: random search for hyper-parameter optimization},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@inproceedings{liu2019hgnn,
+  title     = {Hyperbolic Graph Neural Networks},
+  author    = {Liu, Qi and Nickel, Maximilian and Kiela, Douwe},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2019},
+  note      = {arXiv:1910.12892}
 }
 
-% Needed in Sec. Artifacts and Sec. Limitations: seed variance and
-% selection/publication bias in reported ML results.
-@misc{PLACEHOLDER_seed_variance_reporting,
-  title  = {TODO: work on seed variance / selection bias in ML evaluation},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@misc{zhang2019hgat,
+  title         = {Hyperbolic Graph Attention Network},
+  author        = {Zhang, Yiding and Wang, Xiao and Jiang, Xunqiang and
+                   Shi, Chuan and Ye, Yanfang},
+  year          = {2019},
+  eprint        = {1912.03046},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  note          = {venue not in fetched record}
 }
 
-% Needed in Sec. Limitations: THE strongest objection to our negative result --
-% structured/factorised layers underperform under dense learning rates and
-% require structure-aware LR and initialisation before benefits emerge.
-@misc{PLACEHOLDER_structured_layers_lr,
-  title  = {TODO: structure-aware learning rates for structured/factorised layers},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@inproceedings{shimizu2021hnnpp,
+  title     = {Hyperbolic Neural Networks++},
+  author    = {Shimizu, Ryohei and Mukuta, Yusuke and Harada, Tatsuya},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  note      = {arXiv:2006.08210}
 }
 
-% Needed in Sec. Protocol: GLUE benchmark.
-@misc{PLACEHOLDER_glue,
-  title  = {TODO: GLUE benchmark},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify this citation exists before use}
+@misc{chamberlain2019scalable,
+  title         = {Scalable Hyperbolic Recommender Systems},
+  author        = {Chamberlain, Benjamin Paul and Hardwick, Stephen R. and
+                   Wardrope, David R. and Dzogang, Fabon and Daolio, Fabio and
+                   Vargas, Sa\'{u}l},
+  year          = {2019},
+  eprint        = {1902.08648},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.IR},
+  note          = {venue not in fetched record; uses the Einstein midpoint at scale}
 }
 
-% Needed in Sec. Protocol: the backbones evaluated (BERT, RoBERTa, ModernBERT,
-% SmolLM2, TinyLlama). Split into separate entries once fetched.
-@misc{PLACEHOLDER_backbones,
-  title  = {TODO: model cards / papers for BERT, RoBERTa, ModernBERT, SmolLM2, TinyLlama},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify each citation exists before use}
+@misc{tifrea2018poincareglove,
+  title         = {Poincar\'{e} {GloVe}: Hyperbolic Word Embeddings},
+  author        = {Tifrea, Alexandru and B\'{e}cigneul, Gary and Ganea, Octavian-Eugen},
+  year          = {2018},
+  eprint        = {1810.06546},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record}
 }
 
-% Needed in Sec. Background: graph attention networks (GATConv) and
-% jumping-knowledge aggregation, as used by the GLOT pooler.
-@misc{PLACEHOLDER_gat_jk,
-  title  = {TODO: graph attention networks; jumping knowledge networks},
-  author = {TODO},
-  year   = {TODO},
-  note   = {PLACEHOLDER -- verify each citation exists before use}
+@misc{he2025helm,
+  title         = {{HELM}: Hyperbolic Large Language Models via Mixture-of-Curvature Experts},
+  author        = {He, Neil and Anand, Rishabh and Madhu, Hiren and Maatouk, Ali and
+                   Krishnaswamy, Smita and Tassiulas, Leandros and Yang, Menglin and
+                   Ying, Rex},
+  year          = {2025},
+  eprint        = {2505.24722},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  note          = {venue not in fetched record}
+}
+
+@misc{kochurov2020createdequal,
+  title         = {Are Hyperbolic Representations in Graphs Created Equal?},
+  author        = {Kochurov, Max and Ivanov, Sergey and Burnaev, Eugeny},
+  year          = {2020},
+  eprint        = {2007.07698},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  note          = {fetched record's comment names an ICML 2020 workshop but gives an
+                   inconsistent PMLR volume; left as a preprint record deliberately}
+}
+
+% --- (ii) delta-hyperbolicity as a justification, and what corrupts it -----
+
+@misc{khrulkov2020hyperbolicimage,
+  title         = {Hyperbolic Image Embeddings},
+  author        = {Khrulkov, Valentin and Mirvakhabova, Leyla and Ustinova, Evgeniya and
+                   Oseledets, Ivan and Lempitsky, Victor},
+  year          = {2020},
+  eprint        = {1904.02239},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  note          = {venue not in fetched record; measures delta-hyperbolicity to motivate curvature}
+}
+
+@misc{fournier2015gromov,
+  title         = {Computing the {Gromov} Hyperbolicity of a Discrete Metric Space},
+  author        = {Fournier, Herv\'{e} and Ismail, Anas and Vigneron, Antoine},
+  year          = {2015},
+  eprint        = {1210.3323},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CG},
+  note          = {venue not in fetched record}
+}
+
+@inproceedings{xiao2024attentionsinks,
+  title     = {Efficient Streaming Language Models with Attention Sinks},
+  author    = {Xiao, Guangxuan and Tian, Yuandong and Chen, Beidi and Han, Song and
+               Lewis, Mike},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  note      = {arXiv:2309.17453}
+}
+
+@inproceedings{sun2024massiveactivations,
+  title     = {Massive Activations in Large Language Models},
+  author    = {Sun, Mingjie and Chen, Xinlei and Kolter, J. Zico and Liu, Zhuang},
+  booktitle = {Conference on Language Modeling (COLM)},
+  year      = {2024},
+  note      = {arXiv:2402.17762}
+}
+
+@inproceedings{ethayarajh2019contextual,
+  title     = {How Contextual are Contextualized Word Representations? Comparing the
+               Geometry of {BERT}, {ELMo}, and {GPT}-2 Embeddings},
+  author    = {Ethayarajh, Kawin},
+  booktitle = {Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year      = {2019},
+  note      = {arXiv:1909.00512}
+}
+
+@inproceedings{gao2019degeneration,
+  title     = {Representation Degeneration Problem in Training Natural Language
+               Generation Models},
+  author    = {Gao, Jun and He, Di and Tan, Xu and Qin, Tao and Wang, Liwei and
+               Liu, Tie-Yan},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019},
+  note      = {arXiv:1907.12009}
+}
+
+% --- (iii) Sentence representation and graph-based pooling ----------------
+
+@inproceedings{reimers2019sbert,
+  title     = {Sentence-{BERT}: Sentence Embeddings using Siamese {BERT}-Networks},
+  author    = {Reimers, Nils and Gurevych, Iryna},
+  booktitle = {Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year      = {2019},
+  note      = {arXiv:1908.10084}
+}
+
+@inproceedings{gao2021simcse,
+  title     = {{SimCSE}: Simple Contrastive Learning of Sentence Embeddings},
+  author    = {Gao, Tianyu and Yao, Xingcheng and Chen, Danqi},
+  booktitle = {Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year      = {2021},
+  note      = {arXiv:2104.08821}
+}
+
+@inproceedings{yao2019textgcn,
+  title     = {Graph Convolutional Networks for Text Classification},
+  author    = {Yao, Liang and Mao, Chengsheng and Luo, Yuan},
+  booktitle = {AAAI Conference on Artificial Intelligence (AAAI)},
+  year      = {2019},
+  note      = {arXiv:1809.05679}
+}
+
+% --- (iv) The GNN components the GLOT pooler is built from ----------------
+
+@inproceedings{velickovic2018gat,
+  title     = {Graph Attention Networks},
+  author    = {Veli{\v{c}}kovi{\'{c}}, Petar and Cucurull, Guillem and
+               Casanova, Arantxa and Romero, Adriana and Li{\`{o}}, Pietro and
+               Bengio, Yoshua},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2018},
+  note      = {arXiv:1710.10903}
+}
+
+@inproceedings{kipf2017gcn,
+  title     = {Semi-Supervised Classification with Graph Convolutional Networks},
+  author    = {Kipf, Thomas N. and Welling, Max},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2017},
+  note      = {arXiv:1609.02907}
+}
+
+@misc{xu2019gin,
+  title         = {How Powerful are Graph Neural Networks?},
+  author        = {Xu, Keyulu and Hu, Weihua and Leskovec, Jure and Jegelka, Stefanie},
+  year          = {2019},
+  eprint        = {1810.00826},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  note          = {venue not in fetched record}
+}
+
+@inproceedings{xu2018jk,
+  title     = {Representation Learning on Graphs with Jumping Knowledge Networks},
+  author    = {Xu, Keyulu and Li, Chengtao and Tian, Yonglong and Sonobe, Tomohiro and
+               Kawarabayashi, Ken-ichi and Jegelka, Stefanie},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2018},
+  note      = {arXiv:1806.03536}
+}
+
+% --- (v) Evaluation methodology: budgets, seeds, and reporting ------------
+
+@article{bergstra2012randomsearch,
+  title   = {Random Search for Hyper-Parameter Optimization},
+  author  = {Bergstra, James and Bengio, Yoshua},
+  journal = {Journal of Machine Learning Research},
+  volume  = {13},
+  number  = {10},
+  pages   = {281--305},
+  year    = {2012},
+  note    = {verified against jmlr.org/papers/v13/bergstra12a.html}
+}
+
+@inproceedings{reimers2017scoredistributions,
+  title     = {Reporting Score Distributions Makes a Difference: Performance Study of
+               {LSTM}-networks for Sequence Tagging},
+  author    = {Reimers, Nils and Gurevych, Iryna},
+  booktitle = {Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year      = {2017},
+  note      = {arXiv:1707.09861}
+}
+
+@misc{melis2018stateoftheart,
+  title         = {On the State of the Art of Evaluation in Neural Language Models},
+  author        = {Melis, G\'{a}bor and Dyer, Chris and Blunsom, Phil},
+  year          = {2017},
+  eprint        = {1707.05589},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record}
+}
+
+@inproceedings{lucic2018gans,
+  title     = {Are {GAN}s Created Equal? A Large-Scale Study},
+  author    = {Lucic, Mario and Kurach, Karol and Michalski, Marcin and
+               Gelly, Sylvain and Bousquet, Olivier},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2018},
+  note      = {arXiv:1711.10337}
+}
+
+@misc{dodge2019showyourwork,
+  title         = {Show Your Work: Improved Reporting of Experimental Results},
+  author        = {Dodge, Jesse and Gururangan, Suchin and Card, Dallas and
+                   Schwartz, Roy and Smith, Noah A.},
+  year          = {2019},
+  eprint        = {1909.03004},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  note          = {venue not in fetched record}
+}
+
+@misc{musgrave2020realitycheck,
+  title         = {A Metric Learning Reality Check},
+  author        = {Musgrave, Kevin and Belongie, Serge and Lim, Ser-Nam},
+  year          = {2020},
+  eprint        = {2003.08505},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  note          = {venue not in fetched record}
+}
+
+@inproceedings{narang2021modifications,
+  title     = {Do Transformer Modifications Transfer Across Implementations and
+               Applications?},
+  author    = {Narang, Sharan and Chung, Hyung Won and Tay, Yi and Fedus, William and
+               Fevry, Thibault and Matena, Michael and Malkan, Karishma and
+               Fiedel, Noah and Shazeer, Noam and Lan, Zhenzhong and Zhou, Yanqi and
+               Li, Wei and Ding, Nan and Marcus, Jake and Roberts, Adam and
+               Raffel, Colin},
+  booktitle = {Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year      = {2021},
+  note      = {arXiv:2102.11972}
+}
+
+@inproceedings{qiu2024computebetterspent,
+  title     = {Compute Better Spent: Replacing Dense Layers with Structured Matrices},
+  author    = {Qiu, Shikai and Potapczynski, Andres and Finzi, Marc and
+               Goldblum, Micah and Wilson, Andrew Gordon},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2024},
+  note      = {arXiv:2406.06248}
+}
+
+% --- (vi) Benchmarks and backbones ---------------------------------------
+
+@inproceedings{wang2019glue,
+  title     = {{GLUE}: A Multi-Task Benchmark and Analysis Platform for Natural
+               Language Understanding},
+  author    = {Wang, Alex and Singh, Amanpreet and Michael, Julian and Hill, Felix and
+               Levy, Omer and Bowman, Samuel R.},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019},
+  note      = {arXiv:1804.07461}
+}
+
+@misc{muennighoff2022mteb,
+  title         = {{MTEB}: Massive Text Embedding Benchmark},
+  author        = {Muennighoff, Niklas and Tazi, Nouamane and Magne, Lo\"{i}c and
+                   Reimers, Nils},
+  year          = {2022},
+  eprint        = {2210.07316},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record}
+}
+
+@misc{devlin2019bert,
+  title         = {{BERT}: Pre-training of Deep Bidirectional Transformers for
+                   Language Understanding},
+  author        = {Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and
+                   Toutanova, Kristina},
+  year          = {2018},
+  eprint        = {1810.04805},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record}
+}
+
+@misc{liu2019roberta,
+  title         = {{RoBERTa}: A Robustly Optimized {BERT} Pretraining Approach},
+  author        = {Liu, Yinhan and Ott, Myle and Goyal, Naman and Du, Jingfei and
+                   Joshi, Mandar and Chen, Danqi and Levy, Omer and Lewis, Mike and
+                   Zettlemoyer, Luke and Stoyanov, Veselin},
+  year          = {2019},
+  eprint        = {1907.11692},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record}
+}
+
+@misc{warner2024modernbert,
+  title         = {Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for
+                   Fast, Memory Efficient, and Long Context Finetuning and Inference},
+  author        = {Warner, Benjamin and Chaffin, Antoine and Clavi\'{e}, Benjamin and
+                   Weller, Orion and Hallstr\"{o}m, Oskar and Taghadouini, Said and
+                   Gallagher, Alexis and Biswas, Raja and Ladhak, Faisal and
+                   Aarsen, Tom and Cooper, Nathan and Adams, Griffin and
+                   Howard, Jeremy and Poli, Iacopo},
+  year          = {2024},
+  eprint        = {2412.13663},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record; the ModernBERT paper}
+}
+
+@misc{benallal2025smollm2,
+  title         = {{SmolLM}2: When Smol Goes Big -- Data-Centric Training of a Small
+                   Language Model},
+  author        = {Ben Allal, Loubna and Lozhkov, Anton and Bakouch, Elie and
+                   Mart\'{i}n Bl\'{a}zquez, Gabriel and Penedo, Guilherme and
+                   Tunstall, Lewis and Raffel, Colin and von Werra, Leandro and
+                   Wolf, Thomas and others},
+  year          = {2025},
+  eprint        = {2502.02737},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {venue not in fetched record; author list abridged}
+}
+
+@misc{zhang2024tinyllama,
+  title         = {{TinyLlama}: An Open-Source Small Language Model},
+  author        = {Zhang, Peiyuan and Zeng, Guangtao and Wang, Tianduo and Lu, Wei},
+  year          = {2024},
+  eprint        = {2401.02385},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note          = {technical report}
 }

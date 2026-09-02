@@ -1,0 +1,6 @@
+run_key,target,model,setting,task,arm,stage,trial,seed,metric,detail,graph_metric,tau_quantile,score,elapsed_sec,mean_density,empty_frac
+glue|bert-base-uncased|cola_L2|baseline|t0|s42|tune,glue,bert-base-uncased,cola_L2,cola,baseline,tune,0,42,mcc,graph_metric=cosine;tau_quantile=0.025,cosine,0.025,5.14,117.18,0.14054,0.0
+glue|bert-base-uncased|cola_L2|baseline|t1|s42|tune,glue,bert-base-uncased,cola_L2,cola,baseline,tune,1,42,mcc,graph_metric=cosine;tau_quantile=0.1,cosine,0.1,4.73,114.84,0.21281,0.0
+glue|bert-base-uncased|cola_L2|baseline|t2|s42|tune,glue,bert-base-uncased,cola_L2,cola,baseline,tune,2,42,mcc,graph_metric=cosine;tau_quantile=0.2,cosine,0.2,3.02,117.38,0.30874,0.0
+glue|bert-base-uncased|cola_L2|baseline|t3|s42|tune,glue,bert-base-uncased,cola_L2,cola,baseline,tune,3,42,mcc,graph_metric=cosine;tau_quantile=0.05,cosine,0.05,6.16,117.82,0.16198,0.0
+glue|bert-base-uncased|cola_L2|baseline|t4|s42|tune,glue,bert-base-uncased,cola_L2,cola,baseline,tune,4,42,mcc,graph_metric=cosine;tau_quantile=0.38,cosine,0.38,1.38,118.13,0.48877,0.0

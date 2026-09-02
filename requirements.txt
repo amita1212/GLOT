@@ -8,6 +8,7 @@ torch-sparse
 torch-cluster
 torch-spline-conv
 torch-geometric==2.6.1
+geoopt==0.5.1
 
 # --- NLP & Research Stack ---
 transformers==4.57.0

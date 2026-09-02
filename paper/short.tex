@@ -233,131 +233,64 @@ A_{ij} = \mathbf{1}\!\left[\, \cos(x_i, x_j) > \tau \,\right],
 \label{eq:adj}
 \end{equation}
 runs $K$ graph-attention layers over the result, and aggregates with a learned
-readout. Only the pooler trains. Geometry enters in three places, so we replace
-each in turn. Appendix~\ref{app:math} gives the Poincar\'e ball, the maps
-$\exp^c_0$ and $\log^c_0$, and the geodesic distance we use.
-Figure~\ref{fig:overview} in Appendix~\ref{app:fig} shows where each stage sits.
+readout. Only the pooler trains. Geometry enters in exactly three places, so we
+replace each in turn. Appendix~\ref{app:math} gives the Poincar\'e ball, the
+maps $\exp^c_0$ and $\log^c_0$, and the two replaced operators in full;
+Figure~\ref{fig:overview} shows where each stage sits.
 
-\paragraph{Stage A --- a Poincar\'e graph.} Lift the tokens into the ball and
-join them when their geodesic distance falls below the $q$-quantile of all
-pairwise distances,
-$A_{ij} = \mathbf{1}[\,d_c(\exp^c_0(\tilde{x}_i), \exp^c_0(\tilde{x}_j)) < \rho_q\,]$.
-Using a quantile rather than a fixed radius fixes the edge count at $q$, so A
-and the cosine baseline can be compared at the same sparsity.
+\paragraph{Stage A --- the graph.} Lift the tokens into the ball and join them
+when their geodesic distance falls below the $q$-quantile of all pairwise
+distances. Using a quantile rather than a fixed radius fixes the edge count at
+$q$, so Stage A and the cosine baseline are compared at equal sparsity.
 
-\paragraph{Stage B --- an Einstein gyro-midpoint readout.} Replace the weighted
-sum with the Einstein midpoint in Klein coordinates,
-\begin{equation}
-m_K = \frac{\sum_i a_i \gamma_{k_i} k_i}{\sum_i a_i \gamma_{k_i}},
-\qquad k = \frac{2x}{1 + c\|x\|^2},
-\qquad \gamma_k = (1 - c\|k\|^2)^{-1/2},
-\label{eq:midpoint}
-\end{equation}
-then map back and into the tangent space for the task head. Unlike a plain mean
-this depends on curvature: as $c \rightarrow 0$ it becomes the arithmetic mean.
+\paragraph{Stage B --- the readout.} Replace the weighted sum with the Einstein
+gyro-midpoint in Klein coordinates, then map back into the tangent space for the
+task head. Unlike a plain mean this depends on curvature: as $c \rightarrow 0$
+it degenerates to the arithmetic mean.
 
-\paragraph{Stage C --- M\"obius message passing.} Replace each GNN layer with a
-hyperbolic one that lifts to the tangent space to combine neighbours,
-\begin{equation}
-h_i' = \exp^c_0\!\Big(\sigma\Big(\textstyle\sum_{j \in \mathcal{N}(i)}
-       \alpha_{ij}\, \log^c_0\big(W \otimes_c h_j\big)\Big)\Big),
-\end{equation}
-with $W \otimes_c h = \exp^c_0(W \log^c_0(h))$ and $\alpha_{ij}$ either
-degree-based (HGCN) or attention (HGAT).
+\paragraph{Stage C --- the message passing.} Replace each GNN layer with a
+M\"obius one that lifts to the tangent space to combine neighbours, using
+$W \otimes_c h = \exp^c_0(W \log^c_0 h)$ and either degree-based (HGCN) or
+attention (HGAT) weights.
 
 \paragraph{Curvature is searched in a scale-free way.} Curvature and feature
-scale cannot be told apart here. The geodesic distance depends only on
+scale are not separately identifiable here: geodesic distance depends only on
 $\sqrt{c}\,\|x\|$, so doubling the features and quartering $c$ leaves every
-distance unchanged, and searching $c$ on its own wastes most of the grid. We
-instead rescale features to unit mean norm and search the \emph{effective
-radius} $r_{\text{eff}} = \sqrt{c}\,\mathbb{E}\|x\|$ over
-$\{0.5, 1, 1.5, 2, 3\}$. This is not cosmetic: with raw BERT token norms
-($\approx 14.7$) the map $\exp^c_0$ saturates to radius $1.0$ in
-\texttt{float32}, real pairwise distances land in $[8.85, 11.76]$, and any
-fixed distance threshold below about $9$ returns an empty graph
-(Appendix~\ref{app:defects}).
+distance unchanged. We therefore rescale features to unit mean norm and search
+the \emph{effective radius} $r_{\text{eff}} = \sqrt{c}\,\mathbb{E}\|x\|$ over
+$\{0.5, 1, 1.5, 2, 3\}$ rather than $c$ itself. This is not cosmetic: at raw
+BERT token norms ($\approx 14.7$) the map $\exp^c_0$ saturates in
+\texttt{float32} and any fixed distance threshold below about $9$ returns an
+\emph{empty} graph (Appendix~\ref{app:defects}).
 
 We run all eight combinations of A, B and C, plus a \texttt{no graph} control
 that deletes the token graph but keeps the trained projection and readout, and
 on RoBERTa two threshold-calibration arms (Appendix~\ref{app:calib}).
 
 %-------------------------------------------------------------------------
-\section{How we ran it, and the choices that changed the answer}
+\section{How we ran it}
 \label{sec:choices}
 
 Every arm is frozen-backbone, $2$ epochs, Adam, batch $32$; only the pooler
 trains. Tuning draws $40$ configurations at one held-out seed ($10$ on the
-decoder, where a run costs four times as much). Confirmation re-runs the winner
-on the fixed seed set $\{1,\dots,15\}$, shared across arms. We report the exact
-two-sided sign test beside the paired $t$-test and call something significant
-only when both agree, with a Bonferroni correction across the arms tested
-against a common baseline within a campaign. Full protocol in
-Appendix~\ref{app:protocol}. Six choices moved our results more than the
-effects we were trying to measure.
+decoder, where a run costs four times as much); confirmation re-runs the winner
+on the shared seed set $\{1,\dots,15\}$. We report the exact two-sided sign test
+beside the paired $t$-test, call a result significant only when both agree, and
+apply a Bonferroni correction across the arms sharing a baseline within a
+campaign (Appendix~\ref{app:protocol}).
 
-\paragraph{A seed does not pin a run, and this is the one that hurt.} The code
-seeds Python, NumPy and Torch, but never sets
-\texttt{torch.use\_deterministic\_algorithms} or the cuDNN determinism flags,
-and the scatter reductions underneath message passing are non-deterministic on
-CUDA. We found this by accident: the extended factorial re-ran the CoLA baseline
-cell under a configuration string \emph{identical} to the one already in the
-main campaign, and disagreed on all $15$ seeds --- mean $+0.334$ MCC,
-$\mathrm{sd}\ 1.472$, largest single-seed gap $3.61$
-(Appendix~\ref{app:determinism}). Two consequences. First, a table that splices
-a cell from one campaign into another is unsafe, and our own published
-decomposition of Stage C did exactly that (\S\ref{sec:stageC}). Second, pairing
-buys less than we claimed: on STS-B it still halves the variance, but on CoLA
-the paired difference is \emph{noisier} than the independent one, so the seed
-explains almost nothing there. All within-campaign comparisons in this paper are
-unaffected --- both arms of every paired test were run in the same campaign, and
-re-run non-determinism sits inside the paired scatter the tests already estimate
---- but we would not have known that without checking.
-
-\paragraph{The search space must be the same for every arm.} An earlier
-campaign of ours searched only graph knobs and left the learning rate, depth and
-width pinned at values picked for a \emph{flat} pooler. That handed the baseline
-an advantage and produced a false positive we retract in
-Appendix~\ref{app:narrow}: Stage A on STS-B looked like $+0.223$ Spearman with
-$15/15$ seeds and $t(14)=6.20$, and collapsed to $+0.028$ once the baseline was
-allowed to pick $K=4$. Every BERT and RoBERTa campaign here uses \textsc{Glot}'s
-full grid applied identically to all arms: $40$ trials each, $15$ seeds, $495$
-runs per task on BERT and $1{,}980$ across the four GLUE tasks. What has to be
-equal is the budget \emph{within} a campaign, not the same number everywhere ---
-the decoder gave every arm $10$ trials rather than $40$, for cost.
-
-\paragraph{The search really does use that freedom.} The learning rate does not
-settle on one value. On STS-B all nine arms chose $2\times10^{-4}$; on CoLA
-eight of nine chose $1\times10^{-3}$; MRPC and RTE split. Depth, width and
-threshold move too. Arms were therefore not locked to a rate chosen for a flat
-pooler, which is the main form of the objection that non-Euclidean layers get
-judged under flat-tuned optimisers. Appendix~\ref{app:hp} lists the selected
-configurations.
-
-\paragraph{Tuning maxima are inflated, and can reverse a ranking.} With $T$
-trials and per-seed noise $\sigma$, the best of $T$ sits above the truth even
-for an arm identical to the baseline --- about $1.83$ here on STS-B. On the
-RoBERTa campaign the inflation is large enough to flip the order outright: the
-quantile correction is first of five at the tuning maximum ($56.77$) and last
-of five over $15$ seeds ($53.19$). Reporting tuning maxima would have inverted
-our conclusion. We report confirmation means only.
-
-\paragraph{Cache order is worth about $5$ MCC.} The released code caches
-backbone states and builds the shuffled loader \emph{before} the classifier is
-created. On a cache miss the loader consumes the global RNG; on a hit it does
-not. The same seed therefore gives a different initialisation depending on cache
-state --- $40.37$ cold against $45.54$ warm on CoLA, about six times the seed
-standard deviation. We build all caches before any arm runs. Any reproduction
-that skips this will shift by several points.
-
-\paragraph{The estimator matters as much as the method.} \citet{mantri2026glot}
-fix seed $42$ and report the best $\tau$ per task on the split they also report,
-so every published number is one draw maximised over a search. We report
-$15$-seed means. On CoLA the choice of estimator alone moves the same runs by
-nearly $5$ MCC (Appendix~\ref{app:repro}). Matching their estimator exactly, we
-reach $50.52$ MCC on CoLA against a published $47.49$ and $59.57$ on RTE against
-$59.21$; STS-B stays $0.87$ short and we could not explain it. Every comparison
-in this paper is against our own baseline under identical conditions, never
-against a published number.
+Six choices moved our numbers further than the effects we were trying to
+measure; Appendix~\ref{app:choices} documents all six. One of them changes how
+the rest of this paper should be read. \textbf{A seed does not pin a run.} The
+released code seeds Python, NumPy and Torch but never requests deterministic
+kernels, and the scatter reductions under message passing are non-deterministic
+on CUDA. Re-running one configuration at one seed moves CoLA by up to $3.61$
+MCC, with paired $\mathrm{sd}=1.47$ --- larger than any effect we report
+(Appendix~\ref{app:determinism}). Two things follow. Differencing a cell from
+one campaign against a cell from another is not sound, so we mark every such
+comparison $\S$ and decline to test it. And pairing recovers less than we
+claimed: it halves the variance on STS-B and \emph{increases} it on CoLA, where
+the run-to-run term dominates the seed.
 
 %-------------------------------------------------------------------------
 \section{What we found, stage by stage}
@@ -585,149 +518,74 @@ backbone or which component will benefit from curvature. We did not use it to
 choose; we applied all three stages everywhere and let the paired tests decide.
 
 %-------------------------------------------------------------------------
-\subsection{Porting the method to a new backbone}
+\subsection{Porting the method, and the scope of these claims}
 \label{sec:porting}
 
 Equation~\ref{eq:adj} compares a cosine to a fixed number, which only makes
-sense if cosine scale is comparable across models. It is not. On RoBERTa the
+sense if cosine scale is comparable across backbones. It is not: on RoBERTa the
 \emph{tenth}-percentile token cosine is $0.693$, above the largest $\tau$ in the
 published grid, so every searched setting yields an essentially complete graph
-($0.991$ density; Table~\ref{tab:density}). The useful finding is what happens
-next: \textsc{Glot} is unharmed by that dense graph, while the obvious repair ---
-switching to a quantile threshold --- costs $1.41$ MCC ($2/13$, $p=0.0074$;
-significant uncorrected, not after the Bonferroni correction the now-larger
-RoBERTa campaign requires). It also won its tuning stage before finishing last
-of the calibration arms over $15$ seeds, so selection actively favoured it. We
-therefore withdraw density-matching as a recommendation for anyone porting this
-method.
+($0.991$ density). The useful finding is what happens next. \textsc{Glot} is
+unharmed by that dense graph, while the obvious repair --- switching to a
+quantile threshold --- \emph{costs} $1.41$ MCC ($2/13$). We therefore withdraw
+density-matching as a recommendation for anyone porting this method
+(Appendix~\ref{app:calib}).
 
-\paragraph{And the graph itself carries no measurable GLUE signal on either
-encoder.} Deleting the token graph outright costs $0.29$ MCC on RoBERTa CoLA
-($5/10$) and $0.05$ Spearman on RoBERTa STS-B ($7/8$), neither close to
-significant. On BERT the same control is if anything mildly \emph{positive}:
-$+0.83$ MCC on CoLA ($11/4$, $p=0.118$, second of nine arms), $+0.03$ Spearman,
-$+0.03$ F1 and $+0.07$ accuracy, none significant. So at every tuned density we
-searched, the edges contribute nothing measurable on GLUE. We deliberately do
-not read this as a verdict on \textsc{Glot}: \texttt{no graph} is still a
-trained pooler with the same projection and readout, and the graph \emph{does}
-beat real bag-of-tokens poolers by $14$--$35$ points on the noise diagnostic.
-But it is the bar any geometry claim has to clear first, and Stage C clears it
-on BERT STS-B ($+0.16$, $12/3$) and fails it on BERT CoLA ($+0.58$, $8/7$,
-$p=1.00$) despite the $+1.42$ against the baseline.
+Deleting the token graph outright, meanwhile, costs nothing measurable on GLUE
+on either encoder, and on BERT is mildly positive ($+0.83$ MCC on CoLA, $11/4$).
+We do not read that as a verdict on \textsc{Glot} --- \texttt{no graph} is still
+a trained pooler, and the graph does beat real bag-of-tokens poolers by
+$14$--$35$ points on the noise diagnostic (Appendix~\ref{app:stress}) --- but it
+is the bar any geometry claim has to clear first, and Stage C clears it on BERT
+STS-B and fails it on BERT CoLA.
 
-%-------------------------------------------------------------------------
-\subsection{Scope, and one confound it creates}
-\label{sec:scope}
-
-\citet{mantri2026glot} report ten GLUE tasks \citep{wang2019glue} on six
-backbones. We report four (CoLA, STS-B, MRPC, RTE) with the full nine-arm design
-on BERT-base \citep{devlin2019bert}, two with the same design on RoBERTa
-\citep{liu2019roberta}, one on TinyLlama \citep{zhang2024tinyllama}, plus
-ModernBERT \citep{warner2024modernbert} and SmolLM2 \citep{benallal2025smollm2}
-in calibration roles only. The four tasks we chose are the four \emph{smallest},
-and not by accident: our design costs $495$ runs per task, which is $22$ hours
-for CoLA but an estimated $108$ hours for SST-2 and $185$ and $124$ hours for
-QQP and MNLI, with $75$\,GB of cached states between the latter two.
-
-That leaves a confound we cannot currently rule out. Every task here has at most
-$8{,}551$ training examples, and Stage B's failure mode is variance
-amplification --- a quantity that shrinks as data grows. Our Stage B negative
-may therefore be a small-data effect rather than a property of the geometry.
-SST-2 ($67$k examples, $7.9\times$ CoLA) is the cheapest test that would settle
-it, and we did not run it. We also report IMDB at one seed
-(Appendix~\ref{app:docmteb}) and the original's seven MTEB tasks with a
-properly trained pooler at $15$ seeds on BERT (Appendix~\ref{app:mteb3}); the
-latter is where Stage B's sign turns out to depend on the training regime.
+\paragraph{Scope.} We report four GLUE tasks with the full nine-arm design on
+BERT-base \citep{devlin2019bert}, two on RoBERTa \citep{liu2019roberta}, one on
+TinyLlama \citep{zhang2024tinyllama}, a synthetic noise diagnostic, IMDB, and
+the original's seven MTEB tasks; \citet{mantri2026glot} report ten GLUE tasks on
+six backbones. The four we chose are the four \emph{smallest}, and not by
+accident: our design costs $495$ runs per task. Every one has at most $8{,}551$
+training examples, and Stage B's failure mode is variance amplification --- a
+quantity more data suppresses --- so that negative may be a small-data effect.
+SST-2 is the cheapest test that would settle it, and we did not run it
+(Appendix~\ref{app:limitations}).
 
 %-------------------------------------------------------------------------
 \section{Related work}
 \label{sec:related}
 
-\paragraph{Hyperbolic layers, and where our three stages come from.} Hyperbolic
-space embeds trees with far less distortion than Euclidean space, which
-motivated Poincar\'e embeddings of hierarchies \citep{nickel2017poincare} and
-their Lorentz-model successor \citep{nickel2018lorentz}. Turning those
-embeddings into layers required a way to do linear algebra on a manifold:
-\citet{ganea2018hyperbolic} supplied it, deriving M\"obius linear maps,
-logistic regression and recurrent cells from gyrovector formalism, and
-\citet{shimizu2021hnnpp} later unified the same components with fewer
-parameters. Our Stage C's $W \otimes_c h = \exp^c_0(W\log^c_0 h)$ is exactly
-that construction. Aggregation over a \emph{neighbourhood} came next, in two
-flavours we reuse directly: degree-normalised tangent-space aggregation
-\citep{chami2019hgcn,liu2019hgnn} and attention-weighted aggregation
-\citep{zhang2019hgat}, which are our HGCN and HGAT variants. Stage B is older
-than either. \citet{gulcehre2018hyperbolicattention} re-expressed soft attention
-in the Klein model and aggregated with the Einstein midpoint precisely because
-the Fr\'echet mean has no closed form; \citet{chamberlain2019scalable} scaled
-the same midpoint to production recommendation. In language specifically,
-hyperbolic word embeddings \citep{tifrea2018poincareglove} and, recently,
-billion-parameter hyperbolic language models \citep{he2025helm} report gains
-over Euclidean counterparts. What none of this literature does is vary its
-geometric components \emph{independently inside one architecture}: each paper
-proposes a full hyperbolic model and compares it to a full Euclidean one. Our
-result is that on \textsc{Glot} those components disagree in sign, so the
-aggregate comparison every one of these papers runs would have reported their
-average.
+Hyperbolic layers descend from Poincar\'e embeddings of hierarchies
+\citep{nickel2017poincare,nickel2018lorentz} and from the gyrovector calculus
+that turned them into trainable layers
+\citep{ganea2018hyperbolic,shimizu2021hnnpp}. Our Stage C is exactly that
+construction, and its HGCN and HGAT variants are the two standard neighbourhood
+aggregations \citep{chami2019hgcn,zhang2019hgat}. Stage B is older than either:
+the Einstein midpoint was adopted for attention precisely because the
+Fr\'echet mean has no closed form \citep{gulcehre2018hyperbolicattention}.
+\emph{What none of this literature does is vary its geometric components
+independently inside one architecture} --- each paper proposes a full hyperbolic
+model and compares it against a full Euclidean one. Our result is that on
+\textsc{Glot} those components disagree in sign, so the aggregate comparison
+every one of them runs would have reported their average.
 
-\paragraph{Measured tree-likeness as a justification.} The standard empirical
-warrant for going hyperbolic is a small Gromov $\delta$, computed on the data
-with the four-point condition, at a cost of $O(n^{3.69})$ for an exact answer
-\citep{fournier2015gromov}. \citet{khrulkov2020hyperbolicimage} made this the
-explicit design step --- measure $\delta_{\text{rel}}$ on a dataset's
-embeddings, then choose curvature accordingly --- and
-\citet{tifrea2018poincareglove} justify hyperbolic word embeddings the same
-way. Our measurement in \S\ref{sec:premise} contradicts the premise rather than
-the method: $\delta$ on the Euclidean metric is dominated by a handful of tokens
-with enormous norms, and such tokens are now a well-documented and
-\emph{architectural} feature of transformers --- attention sinks
-\citep{xiao2024attentionsinks} and massive activations
-\citep{sun2024massiveactivations}, whose values are largely input-independent.
-On an angular metric that ignores them, the backbones $\delta$ is used to tell
-apart become indistinguishable. The same outlier and anisotropy structure
-\citep{ethayarajh2019contextual,gao2019degeneration} is what breaks the
-\emph{cosine} threshold when \textsc{Glot} is ported across backbones
-(Appendix~\ref{app:calib}). The closest prior scepticism about curvature is
-\citet{kochurov2020createdequal}, who find Euclidean models superior on several
-graph tasks; they compare whole models on graph benchmarks, whereas we hold one
-architecture fixed and vary its parts.
+The usual empirical warrant for going hyperbolic is a small Gromov $\delta$,
+measured on the data and used to choose curvature
+\citep{khrulkov2020hyperbolicimage,tifrea2018poincareglove}.
+\S\ref{sec:premise} contradicts that premise rather than the method: $\delta$ on
+raw activations is dominated by a handful of attention sinks and massive
+activations \citep{xiao2024attentionsinks,sun2024massiveactivations}, which are
+architectural and largely input-independent.
 
-\paragraph{Sentence pooling.} Most sentence encoders reduce token states with an
-order-free operator and put their effort into the training objective, as with
-siamese fine-tuning \citep{reimers2019sbert} or contrastive learning
-\citep{gao2021simcse}. A separate line builds an explicit graph over text and
-runs a GNN on it, classically over a corpus-level word--document graph
-\citep{yao2019textgcn}. \textsc{Glot} \citep{mantri2026glot} is the
-sentence-level, frozen-backbone instance of that idea, and the pooler we study;
-its components --- graph attention \citep{velickovic2018gat} and
-jumping-knowledge aggregation across layers \citep{xu2018jk} --- are standard,
-and we also test GCN \citep{kipf2017gcn} and GIN \citep{xu2019gin} in its place
-(Appendix~\ref{app:factorial}).
-
-\paragraph{Why the protocol is half of this paper.} A long line of work shows
-that architectural comparisons in NLP and ML are dominated by search budget and
-seed variance rather than by the architecture.
-\citet{reimers2017scoredistributions} showed that the seed alone moves sequence
-taggers by a full F1 point; \citet{melis2018stateoftheart} and
-\citet{lucic2018gans} found that carefully tuned baselines erase claimed
-advances in language modelling and in GANs; \citet{musgrave2020realitycheck}
-reached the same verdict for metric learning; and
-\citet{narang2021modifications} found that most Transformer modifications do not
-transfer at all. \citet{dodge2019showyourwork} give the concrete mechanism we
-hit twice --- the maximum over $T$ trials is a biased estimate that reorders
-methods as $T$ changes --- and equal-budget random search
-\citep{bergstra2012randomsearch} is our response to it. Our retracted Stage A
-result (Appendix~\ref{app:narrow}) is a textbook instance. What this literature
-does not cover, and what Appendix~\ref{app:determinism} adds, is that on GPU the
-seed itself may not identify a run, so the variance pairing is supposed to
-remove can be irreducible. The strongest objection to our own negative result
-also comes from this literature. \citet{qiu2024computebetterspent} show that
-structured replacements for dense layers ``significantly underperform'' under
-dense-tuned learning rates and that their benefit appears only with
-structure-aware initialisation and step sizes. Our search moved the learning
-rate per arm and per task (\S\ref{sec:choices}), but we did not implement
-Riemannian optimisation or curvature-aware initialisation, so that objection
-stands against Stage B and we record it as such
-(Appendix~\ref{app:limitations}).
+Our protocol answers a long line of work showing that architectural comparisons
+in ML are dominated by search budget and seed variance rather than by the
+architecture
+\citep{reimers2017scoredistributions,melis2018stateoftheart,lucic2018gans,musgrave2020realitycheck,narang2021modifications},
+and in particular by the biased maximum over $T$ trials
+\citep{dodge2019showyourwork}. The strongest objection to our own negative
+result comes from the same literature: \citet{qiu2024computebetterspent} show
+that structured replacements for dense layers underperform under dense-tuned
+learning rates. Appendix~\ref{app:related} gives the full discussion, including
+where \textsc{Glot} itself sits among sentence poolers.
 
 %-------------------------------------------------------------------------
 \section{Conclusion}
@@ -796,6 +654,85 @@ numbers.
 \appendix
 \label{page:startappendix}
 
+\section{Related work in full}
+\label{app:related}
+
+\paragraph{Hyperbolic layers, and where our three stages come from.} Hyperbolic
+space embeds trees with far less distortion than Euclidean space, which
+motivated Poincar\'e embeddings of hierarchies \citep{nickel2017poincare} and
+their Lorentz-model successor \citep{nickel2018lorentz}. Turning those
+embeddings into layers required a way to do linear algebra on a manifold:
+\citet{ganea2018hyperbolic} supplied it, deriving M\"obius linear maps,
+logistic regression and recurrent cells from gyrovector formalism, and
+\citet{shimizu2021hnnpp} later unified the same components with fewer
+parameters. Our Stage C's $W \otimes_c h = \exp^c_0(W\log^c_0 h)$ is exactly
+that construction. Aggregation over a \emph{neighbourhood} came next, in two
+flavours we reuse directly: degree-normalised tangent-space aggregation
+\citep{chami2019hgcn,liu2019hgnn} and attention-weighted aggregation
+\citep{zhang2019hgat}, which are our HGCN and HGAT variants. Stage B is older
+than either. \citet{gulcehre2018hyperbolicattention} re-expressed soft attention
+in the Klein model and aggregated with the Einstein midpoint precisely because
+the Fr\'echet mean has no closed form; \citet{chamberlain2019scalable} scaled
+the same midpoint to production recommendation. In language specifically,
+hyperbolic word embeddings \citep{tifrea2018poincareglove} and, recently,
+billion-parameter hyperbolic language models \citep{he2025helm} report gains
+over Euclidean counterparts.
+
+\paragraph{Measured tree-likeness as a justification.} The standard empirical
+warrant for going hyperbolic is a small Gromov $\delta$, computed on the data
+with the four-point condition, at a cost of $O(n^{3.69})$ for an exact answer
+\citep{fournier2015gromov}. \citet{khrulkov2020hyperbolicimage} made this the
+explicit design step --- measure $\delta_{\text{rel}}$ on a dataset's
+embeddings, then choose curvature accordingly --- and
+\citet{tifrea2018poincareglove} justify hyperbolic word embeddings the same
+way. Our measurement in \S\ref{sec:premise} contradicts the premise rather than
+the method: $\delta$ on the Euclidean metric is dominated by a handful of tokens
+with enormous norms, and such tokens are now a well-documented and
+\emph{architectural} feature of transformers --- attention sinks
+\citep{xiao2024attentionsinks} and massive activations
+\citep{sun2024massiveactivations}, whose values are largely input-independent.
+On an angular metric that ignores them, the backbones $\delta$ is used to tell
+apart become indistinguishable. The same outlier and anisotropy structure
+\citep{ethayarajh2019contextual,gao2019degeneration} is what breaks the
+\emph{cosine} threshold when \textsc{Glot} is ported across backbones
+(Appendix~\ref{app:calib}). The closest prior scepticism about curvature is
+\citet{kochurov2020createdequal}, who find Euclidean models superior on several
+graph tasks; they compare whole models on graph benchmarks, whereas we hold one
+architecture fixed and vary its parts.
+
+\paragraph{Sentence pooling.} Most sentence encoders reduce token states with an
+order-free operator and put their effort into the training objective, as with
+siamese fine-tuning \citep{reimers2019sbert} or contrastive learning
+\citep{gao2021simcse}. A separate line builds an explicit graph over text and
+runs a GNN on it, classically over a corpus-level word--document graph
+\citep{yao2019textgcn}. \textsc{Glot} \citep{mantri2026glot} is the
+sentence-level, frozen-backbone instance of that idea, and the pooler we study;
+its components --- graph attention \citep{velickovic2018gat} and
+jumping-knowledge aggregation across layers \citep{xu2018jk} --- are standard,
+and we also test GCN \citep{kipf2017gcn} and GIN \citep{xu2019gin} in its place
+(Appendix~\ref{app:factorial}).
+
+\paragraph{Why the protocol is half of this paper.} \citet{reimers2017scoredistributions}
+showed that the seed alone moves sequence taggers by a full F1 point;
+\citet{melis2018stateoftheart} and \citet{lucic2018gans} found that carefully
+tuned baselines erase claimed advances in language modelling and in GANs;
+\citet{musgrave2020realitycheck} reached the same verdict for metric learning;
+and \citet{narang2021modifications} found that most Transformer modifications do
+not transfer at all. \citet{dodge2019showyourwork} give the concrete mechanism
+we hit twice --- the maximum over $T$ trials is a biased estimate that reorders
+methods as $T$ changes --- and equal-budget random search
+\citep{bergstra2012randomsearch} is our response to it. Our retracted Stage A
+result (Appendix~\ref{app:narrow}) is a textbook instance. What this literature
+does not cover, and what Appendix~\ref{app:determinism} adds, is that on GPU the
+seed itself may not identify a run, so the variance pairing is supposed to
+remove can be irreducible. \citet{qiu2024computebetterspent} show that
+structured replacements for dense layers ``significantly underperform'' under
+dense-tuned learning rates and that their benefit appears only with
+structure-aware initialisation and step sizes. Our search moved the learning
+rate per arm and per task, but we did not implement Riemannian optimisation or
+curvature-aware initialisation, so that objection stands against Stage B and we
+record it as such (Appendix~\ref{app:limitations}).
+
 \section{Hyperbolic preliminaries}
 \label{app:math}
 
@@ -810,6 +747,24 @@ with M\"obius addition $\oplus_c$ and the maps
 and geodesic distance
 $d_c(x,y) = \tfrac{2}{\sqrt{c}}\operatorname{artanh}\big(\sqrt{c}\,\|{-}x \oplus_c y\|\big)$.
 With features rescaled to unit mean norm, $c = r_{\text{eff}}^2$.
+
+Stage A joins tokens when
+$A_{ij} = \mathbf{1}[\,d_c(\exp^c_0(\tilde{x}_i), \exp^c_0(\tilde{x}_j)) < \rho_q\,]$,
+with $\rho_q$ the $q$-quantile of all pairwise distances. Stage B replaces the
+weighted-sum readout with the Einstein midpoint in Klein coordinates,
+\begin{equation}
+m_K = \frac{\sum_i a_i \gamma_{k_i} k_i}{\sum_i a_i \gamma_{k_i}},
+\qquad k = \frac{2x}{1 + c\|x\|^2},
+\qquad \gamma_k = (1 - c\|k\|^2)^{-1/2}.
+\label{eq:midpoint}
+\end{equation}
+Stage C replaces each GNN layer with
+\begin{equation}
+h_i' = \exp^c_0\!\Big(\sigma\Big(\textstyle\sum_{j \in \mathcal{N}(i)}
+       \alpha_{ij}\, \log^c_0\big(W \otimes_c h_j\big)\Big)\Big),
+\end{equation}
+with $W \otimes_c h = \exp^c_0(W \log^c_0(h))$ and $\alpha_{ij}$ either
+degree-based (HGCN) or attention (HGAT).
 
 \section{Architecture}
 \label{app:fig}
@@ -880,6 +835,59 @@ $n=15$, from the median paired standard error actually observed, are $0.225$
 (RoBERTa CoLA), $0.243$ (RoBERTa STS-B) and $0.503$ (TinyLlama). RTE's figure
 exceeds every effect in this paper, so that task can only ever return a null; we
 report it, and draw nothing from it.
+
+\section{The choices that changed the answer}
+\label{app:choices}
+
+Six decisions moved our numbers further than the effects we were trying to
+measure. The first is in \S\ref{sec:choices} and Appendix~\ref{app:determinism};
+the other five are here.
+
+\paragraph{The search space must be the same for every arm.} An earlier
+campaign of ours searched only graph knobs and left the learning rate, depth and
+width pinned at values picked for a \emph{flat} pooler. That handed the baseline
+an advantage and produced a false positive we retract in
+Appendix~\ref{app:narrow}: Stage A on STS-B looked like $+0.223$ Spearman with
+$15/15$ seeds and $t(14)=6.20$, and collapsed to $+0.028$ once the baseline was
+allowed to pick $K=4$. Every BERT and RoBERTa campaign here uses \textsc{Glot}'s
+full grid applied identically to all arms: $40$ trials each, $15$ seeds, $495$
+runs per task on BERT and $1{,}980$ across the four GLUE tasks. What has to be
+equal is the budget \emph{within} a campaign, not the same number everywhere ---
+the decoder gave every arm $10$ trials rather than $40$, for cost.
+
+\paragraph{The search really does use that freedom.} The learning rate does not
+settle on one value. On STS-B all nine arms chose $2\times10^{-4}$; on CoLA
+eight of nine chose $1\times10^{-3}$; MRPC and RTE split. Depth, width and
+threshold move too. Arms were therefore not locked to a rate chosen for a flat
+pooler, which is the main form of the objection that non-Euclidean layers get
+judged under flat-tuned optimisers. Appendix~\ref{app:hp} lists the selected
+configurations.
+
+\paragraph{Tuning maxima are inflated, and can reverse a ranking.} With $T$
+trials and per-seed noise $\sigma$, the best of $T$ sits above the truth even
+for an arm identical to the baseline --- about $1.83$ here on STS-B. On the
+RoBERTa campaign the inflation is large enough to flip the order outright: the
+quantile correction is first of five at the tuning maximum ($56.77$) and last
+of five over $15$ seeds ($53.19$). Reporting tuning maxima would have inverted
+our conclusion. We report confirmation means only.
+
+\paragraph{Cache order is worth about $5$ MCC.} The released code caches
+backbone states and builds the shuffled loader \emph{before} the classifier is
+created. On a cache miss the loader consumes the global RNG; on a hit it does
+not. The same seed therefore gives a different initialisation depending on cache
+state --- $40.37$ cold against $45.54$ warm on CoLA, about six times the seed
+standard deviation. We build all caches before any arm runs. Any reproduction
+that skips this will shift by several points.
+
+\paragraph{The estimator matters as much as the method.} \citet{mantri2026glot}
+fix seed $42$ and report the best $\tau$ per task on the split they also report,
+so every published number is one draw maximised over a search. We report
+$15$-seed means. On CoLA the choice of estimator alone moves the same runs by
+nearly $5$ MCC (Appendix~\ref{app:repro}). Matching their estimator exactly, we
+reach $50.52$ MCC on CoLA against a published $47.49$ and $59.57$ on RTE against
+$59.21$; STS-B stays $0.87$ short and we could not explain it. Every comparison
+in this paper is against our own baseline under identical conditions, never
+against a published number.
 
 \section{A seed does not pin a run}
 \label{app:determinism}
@@ -1387,6 +1395,21 @@ the correction tightens to $\alpha=0.005$ and the repair's deficit no longer
 survives it. The effect is unchanged; only the number of comparisons it must be
 judged against. Against \texttt{published\_tau} directly the repair loses on both
 tasks ($-1.27$ CoLA, $-0.48$ STS-B, the latter $2/13$, $p=0.0074$).
+
+\paragraph{Detail behind \S\ref{sec:porting}.} The quantile repair costs $1.41$
+MCC ($t=-3.44$, $2/13$, sign $p=0.0074$) and also \emph{won} its tuning stage
+before finishing last over $15$ seeds, so selection actively favoured it. The
+\texttt{no graph} control costs $0.29$ MCC on RoBERTa CoLA ($5/10$) and $0.05$
+Spearman on RoBERTa STS-B ($7/8$), neither close to significant; on BERT it is
+$+0.83$ MCC on CoLA ($11/4$, $p=0.118$, second of nine arms), $+0.03$ Spearman,
+$+0.03$ F1 and $+0.07$ accuracy. Against \texttt{no graph} rather than the
+baseline, Stage C is $+0.16$ ($12/3$) on BERT STS-B and $+0.58$ ($8/7$,
+$p=1.00$) on BERT CoLA, despite the $+1.42$ it shows against the baseline.
+ModernBERT \citep{warner2024modernbert} and SmolLM2 \citep{benallal2025smollm2}
+appear in calibration roles only. Cost is why the four tasks are the four
+smallest: $495$ runs per task is $22$ hours for CoLA, against an estimated $108$
+for SST-2 and $185$ and $124$ for QQP and MNLI, with $75$\,GB of cached states
+between the latter two.
 
 \paragraph{Density and scale are separate.} We had credited a $21.71 \rightarrow
 27.15$ MCC recovery on ModernBERT/CoLA to density-matching plus median-norm

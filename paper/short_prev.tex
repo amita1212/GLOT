@@ -1,0 +1,1486 @@
+\documentclass{article}
+\usepackage{iclr2026_conference,times}
+
+% Short form. The body is prose only -- roughly four pages -- and carries the
+% question, the method, the choices that changed the answer, and the findings.
+% Every table, the figure, and all supporting measurement live in the appendix.
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{xcolor}
+
+% ===== DRAFT MACHINERY -- delete this block and every use of it before
+% submission. \PEND marks a table cell whose experiment is running or queued;
+% \TODO marks prose that will have to be restated when that experiment lands.
+% Each one is a real gap, never a rounding or formatting placeholder: no cell
+% in this paper is filled with a guess.
+\newcommand{\PEND}{\textcolor{red}{\textbf{??}}}
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+\title{Does Hyperbolic Geometry Help Graph-Based\\
+Sentence Pooling? A Controlled Stage-wise Study}
+
+\author{Anonymous authors\\
+Paper under double-blind review}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Hyperbolic space represents tree-like structure with less distortion than flat
+space, and transformer token states are often described as tree-like. That
+pairing has motivated hyperbolic versions of many models. We ask whether it
+actually helps, on one architecture, under controlled conditions.
+
+Our subject is \textsc{Glot} \citep{mantri2026glot}, a sentence pooler that
+builds a graph over the tokens of a frozen language model, refines it with a
+GNN, and aggregates it into a single vector. Geometry enters in exactly three
+places --- how the graph is built, how messages combine, how states are pooled
+--- so we replace each independently and give all eight combinations the same
+search budget over fifteen shared seeds.
+
+\textbf{The three parts disagree, and that is the main result.} The hyperbolic
+readout is reliably harmful --- on two encoders and a decoder, with the effect
+size replicating to within $0.2$ Spearman across backbones --- and we can say
+why: it amplifies seed variance rather than acting as a useful prior.
+Hyperbolic message passing is the only part that ever reaches significance, and
+it helps. The hyperbolic graph is nominally positive more often than not, but
+never separates from the baseline. What does \emph{not} transfer is how the
+parts combine: the sign of the readout--message-passing interaction changes
+with task and backbone.
+
+\textbf{We are careful about the one gain.} It is significant end to end, but a
+factorial that separates curvature from the graph density and architecture it
+was tuned alongside cannot attribute it to either --- the total is significant
+and none of its components is. We report it as real but unexplained.
+
+\textbf{We also question the premise.} The usual justification for going
+hyperbolic is a low measured $\delta$-hyperbolicity. That statistic is an
+artifact of a few very large token norms: on an outlier-free metric the
+backbones it is used to tell apart are indistinguishable ($0.2127$ against
+$0.2114$), while the Euclidean version differs between them by two orders of
+magnitude. Measured tree-likeness cannot tell you where curvature will help ---
+only a controlled, component-wise comparison can.
+\end{abstract}
+
+%=========================================================================
+% DRAFT STATUS -- DELETE THIS ENTIRE SECTION BEFORE SUBMISSION
+%=========================================================================
+\section*{\textcolor{red}{Draft status: what is still missing}}
+
+\textcolor{red}{Every \PEND{} below is an experiment that is running or queued,
+not a formatting placeholder. Cells stay empty until the runs land.}
+
+\begin{center}
+\footnotesize
+\begin{tabular}{p{0.29\textwidth}p{0.36\textwidth}p{0.24\textwidth}}
+\toprule
+Experiment & What it fills & Status \\
+\midrule
+Stage C factorial, 4 cells $\times$ 65 seeds
+  & Replaces Tables~\ref{tab:factorial} and~\ref{tab:decomp} at $80\%$ power on
+    the interaction
+  & running, $\approx$7\,h left \\
+Stage A on CoLA, 50 seeds
+  & Settles the one stage the paper openly leaves unresolved
+  & queued, $\approx$2.5\,h \\
+MTEB with a pooler actually trained on MS MARCO; arms baseline, A, C, AC;
+  5 seeds
+  & Replaces the untrained-pooler block of Table~\ref{tab:docmteb}, which
+    currently measures only random initialisation
+  & queued, $\approx$5\,h; pipeline rebuilt and validated end to end \\
+Decoder STS-B, arms B and C \emph{alone}
+  & The \PEND{} cells of Table~\ref{tab:verdict}: neither was ever run on a
+    decoder
+  & queued, $\approx$11\,h \\
+Decoder CoLA, 8 arms, 10 trials, 15 seeds
+  & A second decoder task, and the first test of Stage C on a decoder at all
+  & collaborator machine, $\approx$30\,h \\
+SST-2 reduced design (baseline, B, C, BC; 15 seeds)
+  & The small-data confound in Appendix~\ref{app:limitations}
+  & \emph{not} queued --- no script, and the cache must be built first \\
+IMDB, arms baseline, A, C, AC, 5 seeds, with search
+  & A long-text test of Stages A and C. At $n{=}5$ this is a lead, not a
+    significant result
+  & \emph{not} queued --- no script; cached states are $79$\,GB \\
+\texttt{no graph} ablation on BERT
+  & The control for the RoBERTa null in Appendix~\ref{app:calib}; without it
+    that null cannot be attributed to the backbone rather than the method
+  & unscheduled, $\approx$1\,h \\
+Related work
+  & \S\ref{sec:related}
+  & drafted; every entry fetched from arXiv/JMLR, but venues and pages
+    unconfirmed for the entries marked so in \texttt{references.bib} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{\textcolor{red}{Landed since the last revision.}}
+\textcolor{red}{The RoBERTa campaign (seven hyperbolic arms $\times$ two tasks,
+$40$ trials, $15$ seeds) and the RoBERTa scale factorial are both complete;
+Tables~\ref{tab:absolute}, \ref{tab:robarms} and~\ref{tab:fix} no longer contain
+any placeholder. That campaign resolved item~(i) below in the direction that
+\emph{supports} the paper --- Stage B replicates on a second encoder --- and at
+the same time produced a disagreement the paper did not anticipate, in how B and
+C interact (\S\ref{sec:results}).}
+
+\paragraph{\textcolor{red}{Two of the remaining runs can still change a
+conclusion, not just add a column.}}
+\textcolor{red}{(i) If the $65$-seed factorial attributes Stage C's gain to
+configuration rather than curvature, the single positive result stops being a
+result about geometry at all. (ii) If Stage B's harm disappears on SST-2, the
+Stage B finding is a small-data artifact rather than a property of the
+readout --- and that run is currently \emph{not} scheduled, so the confound
+stands. Every claim below is stated at the strength today's data supports, and
+both of these will have to be restated in whichever direction the runs go.}
+
+%-------------------------------------------------------------------------
+\section{Introduction}
+
+Turning a language model's token states into one vector is a first step for
+most sentence tasks. Simple poolers --- mean, max, \texttt{[CLS]} --- treat
+tokens as an unordered bag. A newer idea is to treat pooling as \emph{relations
+first, aggregation second}: build a graph over tokens, refine it with a GNN,
+then aggregate. \textsc{Glot} \citep{mantri2026glot} is a strong example,
+matching competitive GLUE and MTEB numbers with $20\times$ fewer trained
+parameters and a frozen backbone. Our runs support the claim it rests on: on
+the authors' own noise test, \textsc{Glot} beats every bag-of-tokens pooler by
+$14$--$35$ points in every seed.
+
+This paper asks what else that design can carry. Hyperbolic space is a natural
+candidate for all three of its parts, so we build a hyperbolic version of each
+and measure them separately. That separation is the point: two of the three
+move in opposite directions, so a single ``hyperbolic'' switch would have
+reported their average and found nothing.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\itemsep1pt
+\item \textbf{A stage-wise hyperbolic study} (\S\ref{sec:results}). Under an
+      equal search budget with 15 shared seeds, the hyperbolic readout (B) is
+      significantly harmful on two encoders and on a decoder; hyperbolic message
+      passing (C) is the only part that reaches significance in the positive
+      direction; the hyperbolic graph (A) trends positive but never separates
+      from the baseline. The individual stages replicate across backbones; the
+      interaction between them does not. We report what each part does, not
+      what they do on average.
+\item \textbf{The usual motivation does not survive measurement}
+      (\S\ref{sec:results}). Low $\delta$-hyperbolicity is driven by a handful
+      of very large token norms. On an outlier-free metric the backbones it is
+      used to tell apart are indistinguishable. So measured tree-likeness
+      cannot tell you where curvature will help.
+\item \textbf{The choices that changed our answers} (\S\ref{sec:choices}). A
+      cache-warming order worth $5$ MCC, a search that reverses arm rankings, a
+      threshold that silently produces a complete graph on RoBERTa, and two
+      defects in the released code. We list these because each of them cost us
+      an experiment.
+\end{enumerate}
+
+%-------------------------------------------------------------------------
+\section{What we changed}
+\label{sec:method}
+
+Let $x_1,\dots,x_L$ be the token states of a frozen backbone. \textsc{Glot}
+joins two tokens when their cosine passes a threshold,
+\begin{equation}
+A_{ij} = \mathbf{1}\!\left[\, \cos(x_i, x_j) > \tau \,\right],
+\label{eq:adj}
+\end{equation}
+runs $K$ graph-attention layers over the result, and aggregates with a learned
+readout. Only the pooler trains. Geometry enters in three places --- how the
+graph is built, how messages combine, how states are aggregated --- so we
+replace each in turn. Appendix~\ref{app:math} gives the Poincar\'e ball, the
+maps $\exp^c_0$ and $\log^c_0$, and the geodesic distance we use.
+Figure~\ref{fig:overview} in Appendix~\ref{app:fig} shows where each stage sits.
+
+\paragraph{Stage A: a Poincar\'e graph.} Lift the tokens into the ball and join
+them when their geodesic distance falls below the $q$-quantile of all pairwise
+distances,
+$A_{ij} = \mathbf{1}[\,d_c(\exp^c_0(\tilde{x}_i), \exp^c_0(\tilde{x}_j)) < \rho_q\,]$.
+Using a quantile rather than a fixed radius fixes the edge count at $q$, so A
+and the cosine baseline can be compared at the same sparsity.
+
+\paragraph{Stage B: an Einstein gyro-midpoint readout.} Replace the weighted
+sum with the Einstein midpoint in Klein coordinates,
+\begin{equation}
+m_K = \frac{\sum_i a_i \gamma_{k_i} k_i}{\sum_i a_i \gamma_{k_i}},
+\qquad k = \frac{2x}{1 + c\|x\|^2},
+\qquad \gamma_k = (1 - c\|k\|^2)^{-1/2},
+\label{eq:midpoint}
+\end{equation}
+then map back and into the tangent space for the task head. Unlike a plain mean
+this depends on curvature: as $c \rightarrow 0$ it becomes the arithmetic mean.
+
+\paragraph{Stage C: M\"obius message passing.} Replace each GNN layer with a
+hyperbolic one that lifts to the tangent space to combine neighbours,
+\begin{equation}
+h_i' = \exp^c_0\!\Big(\sigma\Big(\textstyle\sum_{j \in \mathcal{N}(i)}
+       \alpha_{ij}\, \log^c_0\big(W \otimes_c h_j\big)\Big)\Big),
+\end{equation}
+with $W \otimes_c h = \exp^c_0(W \log^c_0(h))$ and $\alpha_{ij}$ either
+degree-based (HGCN) or attention (HGAT).
+
+\paragraph{Curvature is searched in a scale-free way.} Curvature and feature
+scale cannot be told apart here. The geodesic distance depends only on
+$\sqrt{c}\,\|x\|$, so doubling the features and quartering $c$ leaves every
+distance unchanged, and searching $c$ on its own wastes most of the grid. We
+instead rescale features to unit mean norm and search the \emph{effective
+radius} $r_{\text{eff}} = \sqrt{c}\,\mathbb{E}\|x\|$ over
+$\{0.5, 1, 1.5, 2, 3\}$. This is not cosmetic: with raw BERT token norms
+($\approx 14.7$) the map $\exp^c_0$ saturates to radius $1.0$ in
+\texttt{float32}, real pairwise distances land in $[8.85, 11.76]$, and any
+fixed distance threshold below about $9$ returns an empty graph
+(Appendix~\ref{app:defects}).
+
+We run all eight combinations of A, B and C.
+
+%-------------------------------------------------------------------------
+\section{How we ran it, and the choices that changed the answer}
+\label{sec:choices}
+
+Every arm is frozen-backbone, 2 epochs, Adam, batch $32$; only the pooler
+trains. Tuning draws $40$ configurations at one held-out seed ($10$ on the
+decoder, where a run costs four times as much). Confirmation
+re-runs the winner on the fixed seed set $\{1,\dots,15\}$, shared across arms,
+so every comparison is paired. We report the exact two-sided sign test beside
+the paired $t$-test and call something significant only when both agree, with a
+Bonferroni correction across arms ($\alpha = 0.0063$). Full protocol in
+Appendix~\ref{app:protocol}. Five choices moved our results more than the
+effects we were trying to measure.
+
+\paragraph{The search space must be the same for every arm.} An earlier
+campaign of ours searched only graph knobs and left the learning rate, depth and
+width pinned at values picked for a \emph{flat} pooler. That handed the baseline
+an advantage and produced a false positive we retract in
+Appendix~\ref{app:narrow}: Stage A on STS-B looked like $+0.223$ Spearman with
+$15/15$ seeds and $t(14)=6.20$, and collapsed to $+0.028$ once the baseline was
+allowed to pick $K=4$. Every BERT and RoBERTa campaign here uses \textsc{Glot}'s
+full grid applied identically to all arms: $40$ trials each, $15$ seeds, $495$
+runs per task and $1{,}980$ across the four GLUE tasks. What has to be equal is
+the budget \emph{within} a campaign, not the same number everywhere --- the
+decoder gave every arm $10$ trials rather than $40$, for cost
+(Appendix~\ref{app:protocol}).
+
+\paragraph{The search really does use that freedom.} The learning rate does not
+settle on one value. On STS-B all nine arms chose $2\times10^{-4}$; on CoLA
+eight of nine chose $1\times10^{-3}$; MRPC and RTE split. Depth, width and
+threshold move too. Arms were therefore not locked to a rate chosen for a flat
+pooler, which is the main form of the objection that non-Euclidean layers get
+judged under flat-tuned optimisers. Appendix~\ref{app:hp} lists the selected
+configurations.
+
+\paragraph{Tuning maxima are inflated, and can reverse a ranking.} With $T$
+trials and per-seed noise $\sigma$, the best of $T$ sits above the truth even
+for an arm identical to the baseline --- about $1.83$ here on STS-B. On the
+RoBERTa campaign the inflation is large enough to flip the order outright: the
+quantile correction is first of five at the tuning maximum ($56.77$) and last
+of five over 15 seeds ($53.19$). Reporting tuning maxima would have inverted our
+conclusion. We report confirmation means only.
+
+\paragraph{Cache order is worth about $5$ MCC.} The released code caches
+backbone states and builds the shuffled loader \emph{before} the classifier is
+created. On a cache miss the loader consumes the global RNG; on a hit it does
+not. The same seed therefore gives a different initialisation depending on cache
+state --- $40.37$ cold against $45.54$ warm on CoLA, about six times the seed
+standard deviation. We build all caches before any arm runs. Any reproduction
+that skips this will shift by several points.
+
+\paragraph{The estimator matters as much as the method.} \citet{mantri2026glot}
+fix seed $42$ and report the best $\tau$ per task on the split they also report,
+so every published number is one draw maximised over a search. We report 15-seed
+means. On CoLA the choice of estimator alone moves the same runs by nearly $5$
+MCC (Appendix~\ref{app:repro}). Matching their estimator exactly, we reach
+$50.52$ MCC on CoLA against a published $47.49$ and $59.57$ on RTE against
+$59.21$; STS-B stays $0.87$ short and we could not explain it. Every comparison
+in this paper is against our own baseline under identical conditions, never
+against a published number.
+
+%-------------------------------------------------------------------------
+\section{What we found}
+\label{sec:results}
+
+Appendix~\ref{app:results} holds the numbers; this section states what they say.
+
+\paragraph{The hyperbolic readout is harmful, and this is the firmest result in
+the paper.} Every arm containing Stage B loses $0.75$--$1.24$ Spearman on BERT
+STS-B, with $0$ or $1$ of $15$ seeds positive. B alone gives $t = -17.00$ with
+$0/15$ seeds and a sign-test $p$ of $6\times10^{-5}$, the smallest value $15$
+paired seeds can produce. All four arms containing B survive Bonferroni. The
+result repeats on a decoder backbone, TinyLlama, where AB costs $3.56$ Spearman
+and ABC costs $4.51$, both $0/15$.
+
+It now also repeats on a \emph{second encoder}, and the agreement is close
+enough to be worth stating numerically. On RoBERTa STS-B, B alone costs $1.264$
+Spearman ($t=-15.76$, $0/15$) against $1.065$ on BERT ($t=-17.00$, $0/15$), and
+AB costs $0.794$ ($t=-5.77$, $1/14$) against $0.747$ ($t=-5.66$, $1/14$). Both
+survive Bonferroni on both backbones. Stage B alone is negative in all four
+encoder settings we can measure it in, and $15$ of the $16$ B-containing cells
+across those settings are negative. This is the one claim in the paper that has
+replicated rather than merely extended.
+
+\TODO{The RoBERTa half of this has landed and supports the claim; decoder CoLA
+is still running. Do not widen the wording to ``decoders'' plural until it
+does, and do not quietly drop it if it disagrees.}
+
+\paragraph{But the way B interacts with C does \emph{not} replicate, and that
+limits how far the finding travels.} Stage B's harm is stable; what happens when
+the hyperbolic GNN is added on top of it is not. Adding C to B rescues the arm
+on two settings and worsens it on two others:
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+Setting & B alone & BC & effect of adding C \\
+\midrule
+BERT STS-B    & $-1.07$ & $-1.24$ & worse \\
+RoBERTa STS-B & $-1.26$ & $-0.26$ & rescues \\
+BERT CoLA     & $-1.26$ & $+0.22$ & rescues \\
+RoBERTa CoLA  & $-0.37$ & $-2.16$ & much worse \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The extremes are not noise: BC and ABC on RoBERTa CoLA lose $2.16$ and $3.31$
+MCC and both survive Bonferroni, while the same two arms on RoBERTa STS-B are
+flat ($-0.26$, $-0.13$, neither significant). So a two-component summary of the
+form ``B harms, C offsets it'' is not supported. The honest statement is that
+Stage B's harm is a property of the readout, reproducible across backbones and
+tasks, whereas the sign of the B$\times$C interaction is a property of the
+particular task and backbone and we cannot predict it.
+
+There is a mechanism, not just a mean. On the decoder the seed standard
+deviation rises in step with the number of hyperbolic parts:
+$0.48 \rightarrow 0.95 \rightarrow 1.87 \rightarrow 3.58$, a $7.5\times$
+spread. The gyro-midpoint behaves like a variance amplifier rather than a useful
+prior. It is also the one component whose theoretical motivation is weakest
+here: pooling averages tokens that the graph has already smoothed, and the
+Einstein midpoint's curvature dependence pulls hardest exactly on the
+large-norm tokens that Appendix~\ref{app:calib} shows are outliers.
+
+One task disagrees, and we state it rather than bury it. On RTE all four
+B-containing arms are \emph{positive} ($+0.79$ to $+1.85$ accuracy). None is
+significant, and none could be: RTE has $277$ evaluation examples, a seed
+standard deviation of $3.36$, and a minimum detectable effect of $2.7$ points
+--- larger than any effect reported in this paper. We read RTE as uninformative
+rather than as contrary evidence, but it does mean the honest claim is ``B is
+harmful on the tasks that can measure it'', not ``B is harmful
+everywhere''.
+
+\paragraph{Message passing is the only part that ever helps.} Stage C reaches
+$+1.42$ MCC on CoLA with $13/15$ seeds positive ($t = 4.11$, sign $p = 0.0074$)
+--- significant on both tests, though just above our Bonferroni line of
+$0.0063$. On STS-B, A${+}$C is the best of the nine arms ($+0.24$) and C is
+second ($+0.20$). Every arm with the hyperbolic GNN and \emph{without} the
+readout is positive on both tasks.
+
+RoBERTa agrees in direction and adds nothing in strength. C is the best arm on
+RoBERTa CoLA ($+0.64$, $8/7$) and the best hyperbolic arm on RoBERTa STS-B
+($+0.29$, $10/5$), so Stage C is nominally positive in all four encoder
+settings --- but neither RoBERTa figure is significant on either test, and a
+sign test over the four settings gives $p=0.125$. Four out of four in the same
+direction is worth reporting; it is not worth calling a result.
+
+We do not present this as settled. It does not reach MRPC, where no arm beats
+the baseline and every hyperbolic arm is slightly negative ($-0.15$ to $-0.33$,
+none significant). And, most importantly, it does not decompose.
+
+The search had given C a $3.6\times$ denser graph than the baseline ($q = 0.38$
+against $0.10$) together with half the depth and half the width, so the $+1.42$
+mixed geometry with those choices. We ran the $2\times2$ that separates them on
+the same $15$ seeds (Table~\ref{tab:factorial}). Hyperbolic message passing on
+the baseline's \emph{own} graph and architecture gains $+0.40$ ($8/7$,
+$p=1.00$). The denser graph and smaller network with \emph{Euclidean} message
+passing gains $-0.01$ ($10/5$, $p=0.30$). The remaining $+1.03$ is an
+interaction --- and it too is not significant ($t=1.35$, $10/5$, $p=0.30$).
+
+So the decomposition is exact and useless: the three components sum to $+1.416$,
+the total is significant, and no part of it is. The component contrasts carry
+$2$--$3\times$ the variance of the total (sd $1.75$, $2.55$, $2.95$ against
+$1.33$), because each differences two independently trained cells. Resolving the
+interaction at $80\%$ power would need roughly $65$ seeds; we ran $15$. We
+therefore report Stage C's gain as real but \emph{unattributed}: it needs both
+the denser graph and the curved message passing, and we cannot say which does
+the work. That C is negative on MRPC, where the search chose a $15\times$
+\emph{sparser} graph, is consistent with needing both, but is not evidence for
+it.
+
+\TODO{Written for $n=15$. The $65$-seed factorial is queued and is powered to
+resolve the interaction; when it lands this whole paragraph and
+Tables~\ref{tab:factorial}--\ref{tab:decomp} get rewritten. If it attributes
+the gain to configuration rather than curvature, the paper's one positive
+result is no longer a result about geometry --- report that outcome as
+readily as the other one.}
+
+\paragraph{The graph trends positive but never separates.} Stage A is nominally
+ahead of the baseline in five of the seven settings we ran it in: $+0.70$ on
+CoLA, $+0.03$ on STS-B, $+0.04$ on MRPC, $+0.02$ on RTE and $+0.04$ on the
+decoder, against $-0.23$ and $-0.09$ on RoBERTa. It is also nominally ahead in
+the noise diagnostic at three of four distractor ratios
+(Appendix~\ref{app:stress}). But it reaches significance in none of them --- the
+strongest is CoLA at $p = 0.118$ --- and a sign test across the seven settings
+gives $p = 0.45$. The direction is suggestive; the evidence is not there. We
+report A as unresolved rather than as a positive or a null, and note that a
+larger seed budget on CoLA is the cheapest way to settle it.
+
+\TODO{That budget is now queued: baseline and A on CoLA at $n=50$. It should
+turn ``unresolved'' into either a positive or a null. Commit to whichever it
+returns --- the run is powered in advance, so re-running it at a different $n$
+after seeing the answer would be exactly the practice this paper criticises.}
+
+Swapping GAT for GCN or GIN moves CoLA by at most $0.52$ MCC and STS-B by
+$0.23$, inside seed noise. So neither the geometry of the graph nor the
+architecture that reads it is where the measurable variation lives.
+
+\paragraph{The components cancel, and not by a fixed amount.} B and C carry
+opposite signs. A study that turned ``hyperbolic'' on as one switch would have
+reported their average, which is close to zero, and concluded that geometry
+does not matter here. It does --- the parts simply disagree, and only a
+stage-wise test can see that. The cross-backbone comparison above sharpens this
+rather than softening it: because the size and even the sign of the
+B$\times$C interaction changes with task and backbone, the average an aggregate
+switch reports is not a stable quantity either. Two studies running the same
+all-or-nothing comparison on two backbones could report opposite conclusions
+without either being wrong.
+
+\paragraph{The motivation is an artifact.} Hyperbolic layers are usually
+justified by measuring Gromov $\delta$-hyperbolicity and finding it small. On
+the Euclidean metric ModernBERT at layer 16 gives $\delta = 0.0021$, which reads
+as almost perfectly tree-like. But that layer has a maximum-to-median token norm
+ratio of $156$, and $\delta$ is scale-sensitive: a few very large ``attention
+sink'' tokens dominate it and pull it toward zero. On the angular metric
+$\arccos(\cos(\cdot,\cdot))$, which ignores those norms, ModernBERT gives
+$0.2127$ and BERT gives $0.2114$ --- indistinguishable, while the Euclidean
+numbers differ by two orders of magnitude. Flan-T5 shows the same pattern with
+$357\times$ norm outliers. So measured tree-likeness cannot tell you which
+backbone or which component will benefit from curvature. We did not use it to
+choose; we applied all three stages everywhere and let the paired tests decide.
+
+\paragraph{Porting the method to a new backbone.} Equation~\ref{eq:adj} compares
+a cosine to a fixed number, which only makes sense if cosine scale is comparable
+across models. It is not. On RoBERTa the \emph{tenth}-percentile token cosine is
+$0.693$, above the largest $\tau$ in the published grid, so every searched
+setting yields an essentially complete graph ($0.991$ density). The useful
+finding is what happens next: \textsc{Glot} is unharmed by that dense graph,
+while the obvious repair --- switching to a quantile threshold --- costs $1.41$
+MCC ($2/13$, $p=0.0074$; significant uncorrected, but no longer after the
+Bonferroni correction the now-larger RoBERTa campaign requires). It also won its
+tuning stage before finishing last of the calibration arms over 15 seeds, so
+selection actively favoured it. We therefore withdraw density-matching as a
+recommendation for anyone porting this method.
+
+\paragraph{Scope, and one confound it creates.} \citet{mantri2026glot} report ten
+GLUE tasks \citep{wang2019glue}. We report four (CoLA, STS-B, MRPC, RTE), plus
+RoBERTa \citep{liu2019roberta}, ModernBERT \citep{warner2024modernbert},
+SmolLM2 \citep{benallal2025smollm2} and TinyLlama \citep{zhang2024tinyllama} in
+supporting roles; the primary backbone is BERT-base \citep{devlin2019bert}. The four we chose are the four
+\emph{smallest}, and not by accident: our design costs $495$ runs per task,
+which is $22$ hours for CoLA but an estimated $38$ and $41$ days for QQP and
+MNLI, with $149$\,GB of cached states between them.
+
+That leaves a confound we cannot currently rule out. Every task here has at most
+$8{,}551$ training examples, and Stage B's failure mode is variance
+amplification --- a quantity that shrinks as data grows. Our Stage B negative
+may therefore be a small-data effect rather than a property of the geometry.
+SST-2 ($67$k examples, $7.9\times$ CoLA) is the cheapest test that would settle
+it, and we did not run it. We do report IMDB and seven MTEB tasks
+(Appendix~\ref{app:docmteb}), but only at one seed and only for the graph stage
+--- and the MTEB rows turn out to evaluate an untrained pooler --- so they carry
+no weight here.
+
+\TODO{SST-2 is now queued as a reduced design (baseline, B, C, BC; confirmation
+seeds only; CoLA-selected configurations replayed). Rewrite ``we did not run
+it'' when it lands. The reduced design cannot rank arms --- nothing was tuned
+on SST-2 --- so it belongs in the appendix as a confound test, not in the main
+results table.}
+
+%-------------------------------------------------------------------------
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Hyperbolic layers, and where our three stages come from.} Hyperbolic
+space embeds trees with far less distortion than Euclidean space, which
+motivated Poincar\'e embeddings of hierarchies \citep{nickel2017poincare} and
+their Lorentz-model successor \citep{nickel2018lorentz}. Turning those
+embeddings into layers required a way to do linear algebra on a manifold:
+\citet{ganea2018hyperbolic} supplied it, deriving M\"obius linear maps,
+logistic regression and recurrent cells from gyrovector formalism, and
+\citet{shimizu2021hnnpp} later unified the same components with fewer
+parameters. Our Stage C's $W \otimes_c h = \exp^c_0(W\log^c_0 h)$ is exactly
+that construction. Aggregation over a \emph{neighbourhood} came next, in two
+flavours we reuse directly: degree-normalised tangent-space aggregation
+\citep{chami2019hgcn,liu2019hgnn} and attention-weighted aggregation
+\citep{zhang2019hgat}, which are our HGCN and HGAT variants. Stage B is older
+than either. \citet{gulcehre2018hyperbolicattention} re-expressed soft attention
+in the Klein model and aggregated with the Einstein midpoint precisely because
+the Fr\'echet mean has no closed form; \citet{chamberlain2019scalable} scaled
+the same midpoint to production recommendation. In language specifically,
+hyperbolic word embeddings \citep{tifrea2018poincareglove} and, recently,
+billion-parameter hyperbolic language models \citep{he2025helm} report gains
+over Euclidean counterparts. What none of this literature does is vary its
+geometric components \emph{independently inside one architecture}: each paper
+proposes a full hyperbolic model and compares it to a full Euclidean one. Our
+result is that on \textsc{Glot} those components disagree in sign, so the
+aggregate comparison every one of these papers runs would have reported their
+average.
+
+\paragraph{Measured tree-likeness as a justification.} The standard empirical
+warrant for going hyperbolic is a small Gromov $\delta$, computed on the data
+with the four-point condition, at a cost of $O(n^{3.69})$ for an exact answer
+\citep{fournier2015gromov}. \citet{khrulkov2020hyperbolicimage}
+made this the explicit design step --- measure $\delta_{\text{rel}}$ on a
+dataset's embeddings, then choose curvature accordingly --- and
+\citet{tifrea2018poincareglove} justify hyperbolic word embeddings the same
+way. Our measurement in \S\ref{sec:results} contradicts the premise rather than
+the method: $\delta$ on the Euclidean metric is dominated by a handful of tokens
+with enormous norms, and such tokens are now a well-documented and
+\emph{architectural} feature of transformers --- attention sinks
+\citep{xiao2024attentionsinks} and massive activations
+\citep{sun2024massiveactivations}, whose values are largely input-independent.
+On an angular metric that ignores them, the backbones $\delta$ is used to tell
+apart become indistinguishable. The same outlier and anisotropy structure
+\citep{ethayarajh2019contextual,gao2019degeneration} is what breaks the
+\emph{cosine} threshold when \textsc{Glot} is ported across backbones
+(Appendix~\ref{app:calib}). The closest prior scepticism about curvature is
+\citet{kochurov2020createdequal}, who find Euclidean models superior on several
+graph tasks; they compare whole models on graph benchmarks, whereas we hold one
+architecture fixed and vary its parts.
+
+\paragraph{Sentence pooling.} Most sentence encoders reduce token states with an
+order-free operator and put their effort into the training objective, as with
+siamese fine-tuning \citep{reimers2019sbert} or contrastive learning
+\citep{gao2021simcse}. A separate line builds an explicit graph over text and
+runs a GNN on it, classically over a corpus-level word--document graph
+\citep{yao2019textgcn}. \textsc{Glot} \citep{mantri2026glot} is the
+sentence-level, frozen-backbone instance of that idea, and the pooler we study;
+its components --- graph attention \citep{velickovic2018gat}, and
+jumping-knowledge aggregation across layers \citep{xu2018jk} --- are standard, and
+we also test GCN \citep{kipf2017gcn} and GIN \citep{xu2019gin} in its place
+(Appendix~\ref{app:factorial}).
+
+\paragraph{Why the protocol is half of this paper.} A long line of work shows
+that architectural comparisons in NLP and ML are dominated by search budget and
+seed variance rather than by the architecture. \citet{reimers2017scoredistributions}
+showed that the seed alone moves sequence taggers by a full F1 point;
+\citet{melis2018stateoftheart} and \citet{lucic2018gans} found that
+carefully tuned baselines erase claimed advances in language modelling and in
+GANs; \citet{musgrave2020realitycheck} reached the same verdict for metric
+learning; and \citet{narang2021modifications} found that most Transformer
+modifications do not transfer at all. \citet{dodge2019showyourwork} give the
+concrete mechanism we hit twice --- the maximum over $T$ trials is a biased
+estimate that reorders methods as $T$ changes --- and equal-budget random search
+\citep{bergstra2012randomsearch} is our response to it. Our retracted Stage A
+result (Appendix~\ref{app:narrow}) is a textbook instance: an effect that was
+significant at $15/15$ seeds and vanished once the baseline was allowed to
+search the same space. The strongest objection to our own negative result comes
+from this literature too. \citet{qiu2024computebetterspent} show that structured
+replacements for dense layers ``significantly underperform'' under dense-tuned
+learning rates and that their benefit appears only with structure-aware
+initialisation and step sizes. Our search moved the learning rate per arm and
+per task (\S\ref{sec:choices}), but we did not implement Riemannian
+optimisation or curvature-aware initialisation, so that objection stands
+against Stage B and we record it as such (Appendix~\ref{app:limitations}).
+
+%-------------------------------------------------------------------------
+\section{Conclusion}
+
+Whether hyperbolic geometry helps graph-based pooling depends entirely on
+\emph{which part} receives it, and the parts disagree enough to cancel.
+
+The Einstein gyro-midpoint readout is reliably harmful: negative on every task
+with the power to measure it, $0$ or $1$ of $15$ seeds positive on STS-B,
+surviving Bonferroni on \emph{two} encoders and repeating on a decoder, with a
+variance signature that suggests why. Its effect size on STS-B agrees to within
+$0.2$ Spearman between BERT and RoBERTa. M\"obius message passing is the one
+part that ever helps, by $+1.42$ MCC on CoLA and nominally positive in all four
+encoder settings, but it does not reach MRPC, it is significant in only one
+cell, and the comparison is not yet clean. The Poincar\'e graph trends positive
+in most settings and reaches significance in none, so we leave it open. How the
+parts \emph{combine} is the one thing that did not survive a second backbone.
+
+Two lessons travel beyond this architecture. The standard reason to go
+hyperbolic --- a low measured $\delta$ --- is an artifact of norm outliers, and
+on an outlier-free metric the backbones it distinguishes are the same. And a
+comparison between geometries is only as good as the budget given to its
+control: our own retracted result, and the confound we found in our headline
+number, both come from arms that were not given the same freedom. We report both
+so the next study does not repeat them.
+
+\subsubsection*{Reproducibility statement}
+
+All confirmation results use the fixed seed set $\{1,\dots,15\}$, shared across
+arms so comparisons are paired; tuning uses one held-out seed. Every run appends
+a row to a per-campaign CSV recording the configuration, the realised edge
+density, the per-epoch metrics and the wall-clock time. These logs are released
+unmodified, including runs that crashed or produced empty graphs, and the
+analysis scripts behind every table read those CSVs directly. Caches are built
+before any arm runs; that ordering is load-bearing, not an optimisation
+(\S\ref{sec:choices}).
+
+\label{page:endprose}
+
+\bibliography{references}
+\bibliographystyle{iclr2026_conference}
+
+%=========================================================================
+\appendix
+\label{page:startappendix}
+
+\section{Hyperbolic preliminaries}
+\label{app:math}
+
+We work in the Poincar\'e ball
+$\mathbb{B}^d_c = \{x \in \mathbb{R}^d : c\|x\|^2 < 1\}$ of curvature $-c$,
+with M\"obius addition $\oplus_c$ and the maps
+\begin{equation}
+\exp^c_0(v) = \tanh\!\big(\sqrt{c}\,\|v\|\big)\frac{v}{\sqrt{c}\,\|v\|},
+\qquad
+\log^c_0(x) = \operatorname{artanh}\!\big(\sqrt{c}\,\|x\|\big)\frac{x}{\sqrt{c}\,\|x\|},
+\end{equation}
+and geodesic distance
+$d_c(x,y) = \tfrac{2}{\sqrt{c}}\operatorname{artanh}\big(\sqrt{c}\,\|{-}x \oplus_c y\|\big)$.
+With features rescaled to unit mean norm, $c = r_{\text{eff}}^2$.
+
+\section{Architecture}
+\label{app:fig}
+
+\begin{figure}[h]
+\begin{center}
+\includegraphics[width=\textwidth]{glot}
+\end{center}
+\caption{\textsc{Glot}'s pooling pipeline, reproduced from
+\citet{mantri2026glot}. Token states from a frozen backbone are thresholded into
+a graph (Eq.~\ref{eq:adj}), refined by a token-level GNN, and aggregated into a
+single sentence vector $\mathbf{z}$; only the shaded block trains. Each of our
+three changes replaces exactly one depicted component: Stage A the graph, Stage
+B the readout, Stage C the token-GNN.}
+\label{fig:overview}
+\end{figure}
+
+\section{Protocol}
+\label{app:protocol}
+
+Frozen backbone, 2 epochs, Adam, weight decay searched, batch size $32$; the
+pooler is the only trained component. Confirmation uses seeds $\{1,\dots,15\}$
+shared across arms; tuning uses one disjoint held-out seed.
+
+\paragraph{Matched budget.} Trials per arm are $40$ in the BERT wide campaigns
+and on RoBERTa, and $10$ on the decoder and in the earlier graph-only campaigns.
+Every arm inside a given campaign gets the same number, which is the property
+the paired tests actually need. The decoder gets fewer because a TinyLlama run
+costs roughly $4\times$ a BERT run; its arms were therefore selected from a
+coarser search, so its entries should be read as paired deltas within that
+campaign and not compared against the BERT block. The cosine baseline has a
+smaller native space, so we widen its grid to keep selection pressure equal. Equal trials is
+not equal \emph{coverage}: $40$ trials cover $6.2\%$ of a $648$-point space but
+under $0.01\%$ of ABC's $4.98\times10^{7}$-point space. This asymmetry works
+against the complex arms, and we note it as a caveat against our own negative
+results rather than in support of them.
+
+\paragraph{Part of the grid cannot train, and only on one task.} Pooled over
+every released campaign, $19.2\%$ of tuning trials drawn at
+$\mathrm{lr}=2\times10^{-5}$ score zero or below, against $2.2\%$ at
+$2\times10^{-4}$ and $0\%$ at $1\times10^{-3}$. The effect is almost entirely
+CoLA's: on BERT/CoLA, $81$ of $121$ trials at that rate ($66.9\%$) collapse to
+$\mathrm{MCC}=0$ --- the classifier predicts the majority class --- as do $14$
+of $120$ at $2\times10^{-4}$, so $26\%$ of that task's nominal $40$-trial
+budget buys nothing. RoBERTa/CoLA behaves the same way ($44.1\%$), while MRPC
+sits at $2.3\%$ and STS-B and RTE at $0\%$. Every arm draws from the same grid,
+so no comparison is biased by this; but the effective search on CoLA is roughly
+a quarter smaller than the headline number, and that is the task where our one
+positive result lives.
+
+\paragraph{Testing.} We report the exact two-sided sign test beside the paired
+$t$-test because evaluation-set quantisation makes the parametric standard error
+look too small (MRPC accuracy moves in steps of $0.245$ on $408$ examples). Both
+tests must agree. Bonferroni is applied over the arms tested against a common
+baseline \emph{within} a campaign: $8$ arms on the BERT campaigns, giving
+$\alpha = 0.0063$, and $10$ on RoBERTa, where the seven hyperbolic arms share a
+baseline with the three calibration arms, giving $\alpha = 0.005$. The count is
+a property of the campaign, so adding arms to a campaign tightens the threshold
+for arms already in it --- which it did once here
+(Appendix~\ref{app:calib}). The minimum detectable effect at $n=15$ is $0.225$
+(STS-B), $1.153$ (CoLA), $0.317$ (MRPC), $2.7$ (RTE) and $0.503$ (TinyLlama).
+RTE's figure exceeds every effect in this paper, so that task can only ever
+return a null; we report it, and draw nothing from it.
+
+\section{Selected hyper-parameters}
+\label{app:hp}
+
+Each arm tunes its own configuration; these are the winners then run on all 15
+confirmation seeds. Two things are worth reading off this table. The learning
+rate does not converge to a single value across tasks, so no arm was pinned to a
+rate chosen for a flat pooler. And on CoLA, Stage C selected a much denser graph
+($q = 0.38$) and a smaller network than the baseline ($q = 0.10$, twice the
+depth, twice the width) --- the confound discussed in \S\ref{sec:results}. On
+MRPC the same search went the other way, giving C a $15\times$ \emph{sparser}
+graph than the baseline; C is negative there. C wins where it picked dense and
+loses where it picked sparse, which is why the matched comparison is necessary.
+
+\begin{table}[h]
+\caption{Confirmed configurations, BERT wide campaigns. ``$q$'' is
+\texttt{tau\_quantile} for cosine arms and \texttt{rho\_quantile} for Poincar\'e
+arms; both mean ``keep the closest $q$ fraction of token pairs''. ``width'' is
+the GNN hidden dimension, ``proj'' the projection dimension.}
+\label{tab:hp}
+\begin{center}
+\small
+\begin{tabular}{llccccc}
+\toprule
+Task & Arm & lr & layers & width & proj & $q$ \\
+\midrule
+\multirow{5}{*}{CoLA}
+ & baseline & $1{\times}10^{-3}$ & 4 & 256 & 128 & 0.10 \\
+ & A        & $1{\times}10^{-3}$ & 4 & 256 & 256 & 0.05 \\
+ & B        & $2{\times}10^{-4}$ & 2 & 256 & 512 & 0.38 \\
+ & C        & $1{\times}10^{-3}$ & 2 & 128 & 256 & \textbf{0.38} \\
+ & AC       & $1{\times}10^{-3}$ & 2 & 128 & 256 & 0.05 \\
+\midrule
+\multirow{5}{*}{STS-B}
+ & baseline & $2{\times}10^{-4}$ & 4 & \phantom{0}64 & 256 & 0.20 \\
+ & A        & $2{\times}10^{-4}$ & 4 & \phantom{0}64 & 256 & 0.10 \\
+ & B        & $2{\times}10^{-4}$ & 4 & \phantom{0}64 & 128 & 0.38 \\
+ & C        & $2{\times}10^{-4}$ & 2 & 128 & 128 & 0.20 \\
+ & AC       & $2{\times}10^{-4}$ & 4 & 128 & 512 & 0.20 \\
+\midrule
+\multirow{3}{*}{MRPC}
+ & baseline & $2{\times}10^{-4}$ & 2 & 128 & 128 & 0.38 \\
+ & B        & $1{\times}10^{-3}$ & 4 & 128 & 256 & 0.10 \\
+ & C        & $2{\times}10^{-4}$ & 2 & 128 & 256 & \textbf{0.025} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Other selected settings vary similarly. Jumping-knowledge mode is uniform
+\emph{within} a task but differs \emph{between} them --- \texttt{max} on CoLA,
+\texttt{cat} on STS-B --- so it tracks the task, not the arm. Curvature, where
+it applies, spans the whole searched range $\{0.25, 1.0, 4.0\}$ with no
+consistent preference.
+
+\section{Reproduction}
+\label{app:repro}
+
+\begin{table}[h]
+\caption{One method, four estimators, on CoLA. Each row is the \emph{same}
+pooler; only the way the score is computed changes. A dash means the knob does
+not apply. The published value sits between our mean and our maximum, and the
+row that matches how it was computed exceeds it.}
+\label{tab:estimator}
+\begin{center}
+\small
+\begin{tabular}{lllc}
+\toprule
+Seeds & Aggregated & Selected over & CoLA MCC \\
+\midrule
+\multicolumn{4}{l}{\emph{Published \citep{mantri2026glot}}} \\
+1 (seed 42) & --- & best $\tau$ of 3 & 47.49 \\
+\midrule
+\multicolumn{4}{l}{\emph{Ours, same method}} \\
+15 & mean & --- & 45.37 \\
+15 & max  & --- & 48.17 \\
+1 (seed 42) & --- & best of 40 configs & \textbf{50.16} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\caption{Matched-estimator comparison: best score at \textsc{Glot}'s own seed
+($42$) over \textsc{Glot}'s own grid, $78$ configurations per task, so both
+columns are computed the same way.}
+\label{tab:repro}
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+Task & ours & published & $\Delta$ \\
+\midrule
+CoLA (MCC)       & \textbf{50.52} & 47.49 & $+3.03$ \\
+RTE (acc.)       & \textbf{59.57} & 59.21 & $+0.36$ \\
+STS-B (Spearman) & 82.99 & 83.86 & $-0.87$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+The published $\tau$-sensitivity curve cannot be read as a $\tau$ effect: it
+spans $7.87$ MCC on CoLA, while we measure a spread of $5.46$ across seeds at
+\emph{fixed} $\tau$.
+
+\section{Main results}
+\label{app:results}
+
+Table~\ref{tab:absolute} gives the absolute scores behind every delta in this
+paper. It is laid out like Table~1 of \citet{mantri2026glot} --- rows are
+methods, columns are tasks, blocks are backbones --- but the rows are our arms
+rather than competing poolers, because our question is which \emph{component}
+of \textsc{Glot} does what, not whether \textsc{Glot} beats mean-pooling. We
+never ran Mean, Max or \texttt{[CLS]} on GLUE, so we cannot fill their five
+method rows; those poolers appear only in the noise diagnostic
+(Appendix~\ref{app:stress}), where they lose by $14$--$35$ points.
+
+\begin{table}[h]
+\caption{Absolute confirmed scores, mean $\pm$ sd over the $15$ shared seeds.
+Metrics follow \citet{mantri2026glot}: MCC for CoLA, Spearman for STS-B, F1 for
+MRPC, accuracy for RTE. The RoBERTa block is now complete: it originally
+searched only the calibration arms (published $\tau$ and the quantile repair)
+because its failure mode is thresholding rather than geometry, and the seven
+hyperbolic arms were added afterwards under the same $40$-trial budget.
+\texttt{no graph} deletes the token graph entirely and is an ablation of
+\textsc{Glot} itself, not one of our stages. Every number is a confirmation
+mean, never a tuning maximum.}
+\label{tab:absolute}
+\begin{center}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{4}{c}{BERT-base} & \multicolumn{2}{c}{RoBERTa-base} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-7}
+Arm & CoLA & STS-B & MRPC & RTE & CoLA & STS-B \\
+    & (MCC) & (Spear.) & (F1) & (acc.) & (MCC) & (Spear.) \\
+\midrule
+\textsc{Glot} (baseline) & 45.37\,$\pm$1.30 & 82.53\,$\pm$0.33 & 82.14\,$\pm$0.44 & 53.79\,$\pm$3.36 & 54.60\,$\pm$1.52 & 83.89\,$\pm$0.30 \\
+published $\tau$         & --- & --- & --- & --- & 54.46\,$\pm$1.18 & \textbf{84.21}\,$\pm$0.29 \\
+quantile $\tau$          & --- & --- & --- & --- & 53.19\,$\pm$1.59 & 83.73\,$\pm$0.29 \\
+\texttt{no graph}        & --- & --- & --- & --- & 54.32\,$\pm$2.06 & 83.84\,$\pm$0.32 \\
+\midrule
+A   & 46.07\,$\pm$0.99 & 82.56\,$\pm$0.31 & \textbf{82.18}\,$\pm$0.29 & 53.82\,$\pm$1.58 & 54.37\,$\pm$0.89 & 83.80\,$\pm$0.30 \\
+B   & 44.11\,$\pm$1.48 & 81.47\,$\pm$0.36 & 81.81\,$\pm$0.39 & 54.78\,$\pm$1.58 & 54.23\,$\pm$1.64 & 82.62\,$\pm$0.41 \\
+C   & \textbf{46.78}\,$\pm$0.79 & 82.73\,$\pm$0.31 & 81.83\,$\pm$0.39 & 54.34\,$\pm$2.07 & \textbf{55.25}\,$\pm$1.39 & 84.18\,$\pm$0.40 \\
+AB  & 44.13\,$\pm$1.61 & 81.79\,$\pm$0.46 & 81.86\,$\pm$0.41 & 54.59\,$\pm$2.93 & 53.89\,$\pm$1.71 & 83.09\,$\pm$0.43 \\
+AC  & 45.82\,$\pm$1.94 & \textbf{82.77}\,$\pm$0.20 & 81.99\,$\pm$0.35 & 55.26\,$\pm$1.80 & 54.60\,$\pm$1.31 & 83.95\,$\pm$0.28 \\
+BC  & 45.59\,$\pm$1.19 & 81.29\,$\pm$0.32 & 81.83\,$\pm$0.43 & \textbf{55.64}\,$\pm$1.88 & 52.44\,$\pm$1.53 & 83.63\,$\pm$0.40 \\
+ABC & 44.84\,$\pm$1.87 & 81.70\,$\pm$0.34 & 81.88\,$\pm$0.44 & 54.85\,$\pm$1.52 & 51.29\,$\pm$1.83 & 83.75\,$\pm$0.30 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Two things are visible here that the delta tables hide. The whole spread on MRPC
+is $0.37$ F1 across the eight arms run on it, and on RTE the seed standard
+deviation ($1.5$--$3.4$) is larger than every gap in the column --- which is why
+we treat both as null. And the bolded best cell names five \emph{different}
+arms across the six columns, which is what a table of noise looks like; only
+Stage C takes the top cell twice.
+
+\begin{table}[h]
+\caption{Per-stage verdict. Entries are paired mean differences against
+\textsc{Glot}'s flat baseline on shared seeds. The last column is \emph{not} a
+fifth task: it is STS-B again on a decoder backbone, so it sits beside the BERT
+STS-B column and the two read as a replication. $\dagger$ significant on both
+the paired $t$-test and the exact sign test; $\ddagger$ additionally surviving
+Bonferroni. \emph{No RTE entry is significant} --- that task has $277$
+evaluation examples and a minimum detectable effect of $2.7$ accuracy points,
+larger than any effect in this paper. \PEND{} is an in-flight run: B and C
+\emph{alone} were dropped from the decoder sweep for cost and are being added
+now. The RoBERTa campaign uses the same nine arms and is reported separately in
+Table~\ref{tab:robarms}, because its Bonferroni count differs.}
+\label{tab:verdict}
+\begin{center}
+\small
+\begin{tabular}{lcccccl}
+\toprule
+ & \multicolumn{4}{c}{BERT-base (encoder)} & TinyLlama & \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-6}
+Arm & CoLA & STS-B & MRPC & RTE & STS-B & Verdict \\
+    & (MCC) & (Spear.) & (F1) & (acc.) & (Spear.) & \\
+\midrule
+A   & $+0.70$ & $+0.03$ & $+0.04$ & $+0.02$ & $+0.04$ & flat everywhere \\
+B   & $-1.26$ & $-1.07^{\ddagger}$ & $-0.33$ & $+0.99$ & \PEND & harmful \\
+C   & $\mathbf{+1.42}^{\dagger}$ & $+0.20$ & $-0.32$ & $+0.55$ & \PEND & CoLA only \\
+\midrule
+AB  & $-1.24$ & $-0.75^{\ddagger}$ & $-0.28$ & $+0.79$ & $-3.56^{\ddagger}$ & harmful \\
+AC  & $+0.45$ & $\mathbf{+0.24}$ & $-0.15$ & $+1.47$ & $+0.21$ & flat / slight $+$ \\
+BC  & $+0.22$ & $-1.24^{\ddagger}$ & $-0.31$ & $+1.85$ & $-1.17^{\ddagger}$ & harmful \\
+ABC & $-0.53$ & $-0.84^{\ddagger}$ & $-0.26$ & $+1.06$ & $-4.51^{\ddagger}$ & harmful \\
+\midrule
+\multicolumn{7}{l}{\emph{Every arm with B is negative on CoLA, STS-B and MRPC.
+All four are positive on RTE, none significantly.}} \\
+\multicolumn{7}{l}{\emph{Every arm with C but not B is positive on CoLA and
+STS-B.}} \\
+\multicolumn{7}{l}{\emph{The two STS-B columns agree in sign on all five arms
+run on both backbones.}} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\caption{BERT-base, wide search, $n=15$ paired seeds. ``p/n'' counts seeds
+positive/negative against the baseline.}
+\label{tab:arms}
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{CoLA (MCC)} & \multicolumn{2}{c}{STS-B (Spearman)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Arm & $\Delta$ & p/n & $\Delta$ & p/n \\
+\midrule
+C   & $\mathbf{+1.42}$ & 13/2 & $+0.20$ & 12/3 \\
+AC  & $+0.45$ & 10/5 & $\mathbf{+0.24}$ & 11/4 \\
+A   & $+0.70$ & 11/4 & $+0.03$ & \phantom{0}9/5 \\
+\midrule
+BC  & $+0.22$ & \phantom{0}7/8 & $-1.24$ & \phantom{0}0/15 \\
+ABC & $-0.53$ & \phantom{0}6/9 & $-0.84$ & \phantom{0}1/14 \\
+AB  & $-1.24$ & \phantom{0}4/11 & $-0.75$ & \phantom{0}1/14 \\
+B   & $-1.26$ & \phantom{0}5/10 & $-1.07$ & \phantom{0}0/15 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Paired statistics on STS-B: B $\bar{d}=-1.065$, $t=-17.00$, sign
+$p=6\times10^{-5}$; BC $-1.242$, $t=-8.30$, $p=6\times10^{-5}$; ABC $-0.837$,
+$t=-6.36$, $p=0.00098$; AB $-0.747$, $t=-5.66$, $p=6\times10^{-5}$. All four
+survive Bonferroni. On CoLA, C gives $\bar{d}=+1.416$, $t=4.11$, sign
+$p=0.0074$ --- significant on both tests but above $\alpha=0.0063$.
+
+\begin{table}[h]
+\caption{RoBERTa-base, the same nine arms and the same $40$-trial, $15$-seed
+protocol, tuned on RoBERTa itself. Paired against RoBERTa's own baseline on
+shared seeds. $\ddagger$ survives Bonferroni ($\alpha=0.0063$) on both the
+paired $t$-test and the exact sign test. \texttt{no graph} removes the token
+graph altogether; it is an ablation of \textsc{Glot}, not one of our stages, and
+is discussed in \S\ref{sec:results}.}
+\label{tab:robarms}
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{CoLA (MCC)} & \multicolumn{2}{c}{STS-B (Spearman)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Arm & $\Delta$ & p/n & $\Delta$ & p/n \\
+\midrule
+C   & $\mathbf{+0.64}$ & \phantom{0}8/7 & $\mathbf{+0.29}$ & 10/5 \\
+AC  & $+0.00$ & \phantom{0}6/9 & $+0.06$ & \phantom{0}7/8 \\
+A   & $-0.23$ & \phantom{0}5/10 & $-0.09$ & \phantom{0}5/10 \\
+\midrule
+B   & $-0.37$ & \phantom{0}5/10 & $-1.26^{\ddagger}$ & \phantom{0}0/15 \\
+AB  & $-0.71$ & \phantom{0}5/10 & $-0.79^{\ddagger}$ & \phantom{0}1/14 \\
+BC  & $-2.16^{\ddagger}$ & \phantom{0}0/15 & $-0.26$ & \phantom{0}4/11 \\
+ABC & $-3.31^{\ddagger}$ & \phantom{0}1/14 & $-0.13$ & \phantom{0}8/7 \\
+\midrule
+\texttt{no graph} & $-0.29$ & \phantom{0}5/10 & $-0.05$ & \phantom{0}7/8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Paired statistics on RoBERTa STS-B: B $\bar{d}=-1.264$, $t=-15.76$, sign
+$p=6\times10^{-5}$; AB $-0.794$, $t=-5.77$, $p=0.00098$. On RoBERTa CoLA: BC
+$-2.157$, $t=-6.20$, $p=6\times10^{-5}$; ABC $-3.313$, $t=-5.44$, $p=0.00098$.
+Every arm in this table has exactly $15$ seeds; the shard files and the merged
+campaign file both contain the same rows, so the analysis de-duplicates by run
+key before testing.
+
+\subsection{Decomposing Stage C}
+\label{app:factorial2x2}
+
+Stage C's selected configuration differed from the baseline's in two ways at
+once: a $3.6\times$ denser graph ($q=0.38$ against $0.10$) and a smaller network
+($2$ layers of width $128$ against $4$ of $256$). We therefore ran the
+$2\times2$ that crosses \emph{message-passing geometry} with
+\emph{graph-and-architecture configuration}, on the same $15$ seeds. Two cells
+already existed; the two off-diagonal cells are new runs, written to a separate
+results file so the released campaign logs are untouched. The hyperbolic cells
+use C's own tuned curvature settings ($c = 4.0$, HGAT, input clip $0.7$), which
+is the choice most favourable to C.
+
+\begin{table}[h]
+\caption{Density $\times$ curvature factorial, CoLA MCC, mean $\pm$ sd over the
+$15$ shared seeds. Realised edge density was verified per cell: $0.0999$ in the
+base-config row, $0.3759$ in the C-config row, so the columns really are
+density-matched.}
+\label{tab:factorial}
+\begin{center}
+\small
+\begin{tabular}{lcc}
+\toprule
+ & Euclidean MP & hyperbolic MP \\
+\midrule
+base config ($q{=}0.10$, $K{=}4$, $h{=}256$) & 45.37\,$\pm$1.30 & 45.77\,$\pm$1.42 \\
+C config ($q{=}0.38$, $K{=}2$, $h{=}128$)    & 45.36\,$\pm$2.19 & \textbf{46.78}\,$\pm$0.79 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\caption{Exact decomposition of Stage C's headline gain, paired over $15$ seeds.
+The three components sum to the total. The total is significant on both tests;
+none of its parts is.}
+\label{tab:decomp}
+\begin{center}
+\small
+\begin{tabular}{lrrrrl}
+\toprule
+Component & $\Delta$ & sd & $t$ & p/n & sign $p$ \\
+\midrule
+geometry alone (at base config)      & $+0.400$ & 1.75 & $0.88$ & \phantom{0}8/7 & 1.0000 \\
+configuration alone (Euclidean MP)   & $-0.012$ & 2.55 & $-0.02$ & 10/5 & 0.3018 \\
+interaction                          & $+1.028$ & 2.95 & $1.35$ & 10/5 & 0.3018 \\
+\midrule
+\textbf{total} (C $-$ baseline)      & $\mathbf{+1.416}$ & 1.33 & $\mathbf{4.11}$ & \textbf{13/2} & \textbf{0.0074} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Each component differences two independently trained cells, so it inherits both
+their variances; that is why the parts are noisier than the whole. At the
+observed effect and spread, detecting the interaction at $80\%$ power would take
+about $65$ seeds. This is the cleanest illustration we have of a general
+hazard: a significant end-to-end improvement can be genuinely irreducible at the
+sample size that established it, and reporting any one of these components as
+``the'' explanation would have been unsupported.
+
+\section{Porting to other backbones}
+\label{app:calib}
+
+\begin{table}[h]
+\caption{Edge density from the published grid $\tau \in \{0.1,0.3,0.6\}$, with
+the tenth-percentile token cosine that produces it. Measured on 192 CoLA
+sentences at the final layer, padding masked and self-loops excluded. This is a
+property of the backbone and $\tau$ alone. Density near $1$ means the GNN sees a
+nearly complete graph.}
+\label{tab:density}
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Backbone & $\cos$ p10 & $\tau{=}0.1$ & $\tau{=}0.3$ & $\tau{=}0.6$ \\
+\midrule
+TinyLlama-1.1B   & 0.016 & 0.762 & 0.533 & \textbf{0.073} \\
+ModernBERT-base  & 0.076 & 0.866 & 0.759 & 0.599 \\
+BERT-base        & 0.098 & 0.876 & 0.505 & \textbf{0.103} \\
+SmolLM2-360M     & 0.322 & 0.956 & 0.908 & 0.741 \\
+RoBERTa-base     & \textbf{0.693} & 1.000 & 1.000 & \textbf{0.991} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+The failure is layer-dependent: ModernBERT reaches $0.599$ at the final layer
+but $0.996$ at layer 12. \citet{mantri2026glot} do not state which layer they
+pool, so ``which backbones are affected'' cannot be settled from the published
+description; we treat RoBERTa as the one clear case.
+
+\begin{table}[h]
+\caption{RoBERTa-base calibration arms, $n=15$ paired seeds, tuned per arm and
+per task on RoBERTa itself (40 trials each). \texttt{paper\_tau} pins the
+published grid and gives the near-complete graph above; \texttt{density\_fix} is
+the quantile repair. The repair is the worst of these four on both tasks ---
+despite having \emph{won} the tuning stage ($56.77$, best of five). The
+hyperbolic arms tuned on the same backbone are in Table~\ref{tab:robarms}.}
+\label{tab:roberta}
+\begin{center}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{3}{c}{CoLA (MCC)} & \multicolumn{3}{c}{STS-B (Spearman)} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Arm & mean & $\Delta$ & p/n & mean & $\Delta$ & p/n \\
+\midrule
+baseline              & \textbf{54.60} & \emph{ref} & --- & 83.89 & \emph{ref} & --- \\
+\texttt{paper\_tau}   & 54.46 & $-0.14$ & \phantom{0}8/7 & \textbf{84.21} & $\mathbf{+0.32}$ & 12/3 \\
+A                     & 54.37 & $-0.23$ & \phantom{0}5/10 & 83.80 & $-0.09$ & \phantom{0}5/10 \\
+\texttt{density\_fix} & 53.19 & $\mathbf{-1.41}$ & \phantom{0}2/13 & 83.73 & $-0.15$ & \phantom{0}5/10 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Forcing the graph sparse costs $1.41$ MCC ($t=-3.44$, $2/13$, sign $p=0.0074$).
+An earlier revision reported this as surviving Bonferroni at $\alpha=0.0125$,
+which was correct when only the four calibration arms were tested against this
+baseline. The RoBERTa campaign now puts ten arms against the same baseline, so
+the correction tightens to $\alpha=0.005$ and the repair's deficit no longer
+survives it. We therefore report it as significant uncorrected and not after
+correction --- the effect is unchanged, only the number of comparisons it must
+be judged against. Against \texttt{paper\_tau} directly the repair loses on both
+tasks ($-1.27$ CoLA, $-0.48$ STS-B, the latter $2/13$, $p=0.0074$).
+
+\paragraph{On RoBERTa the graph carries no measurable signal at all.} Because
+the hyperbolic arms gave us a matched budget on this backbone, we also ran an
+arm that deletes the token graph outright. It costs $0.29$ MCC on CoLA ($5/10$)
+and $0.05$ Spearman on STS-B ($7/8$), neither close to significant --- so on
+RoBERTa, a graph at the baseline's own tuned density and no graph at all are
+indistinguishable. We deliberately do \emph{not} read this as a verdict on
+\textsc{Glot}. RoBERTa is the backbone whose cosine threshold we already know to
+be miscalibrated (Table~\ref{tab:density}), so an uninformative graph here is
+the expected consequence of that defect rather than independent evidence about
+the method, and we have not run the same ablation on BERT, where the threshold
+behaves. It is recorded because it is the natural control for everything else in
+this appendix, and because running it on BERT is the obvious next test.
+
+\paragraph{Density and scale are separate.} We had credited a $21.71 \rightarrow
+27.15$ MCC recovery on ModernBERT/CoLA to density-matching plus median norm
+rescaling, measured at one seed with both factors moved together. The full
+$2\times3$ factorial over 5 seeds (Table~\ref{tab:fix}) separates them. The
+choice of rescaling statistic matters far more than whether you rescale, and it
+is the only effect here significant on both tests: on ModernBERT layer 12, whose
+mean/median norm ratio is $7.66$, mean-based (\texttt{rms}) rescaling costs
+$11.03$ MCC ($t=-5.47$, $0/5$) --- the mean is exactly the statistic outliers
+corrupt. Median rescaling is directionally positive ($+5.96$ and $+5.32$ on
+layer 12, $+1.34$ at the final layer with $5/0$) but reaches significance
+nowhere at $n=5$. Density-matching has no consistent sign ($+4.58$, $-1.91$,
+$-0.25$, $+0.45$). BERT is inert throughout, every contrast at most $0.27$ MCC
+--- our earlier single-seed reading of that control ($45.54 \rightarrow 43.41$)
+was noise.
+
+\begin{table}[h]
+\caption{Density $\times$ scale factorial, CoLA MCC, mean $\pm$ sd over 5 seeds.
+Columns vary the threshold, rows vary token-norm rescaling. At $n=5$ the exact
+sign test cannot fall below $p=0.0625$, so nothing here can meet our both-tests
+bar; we report it as a lead.}
+\label{tab:fix}
+\begin{center}
+\small
+\begin{tabular}{llcc}
+\toprule
+Backbone (layer) & Rescaling & $\tau=0.6$ (pub.) & $q=0.05$ \\
+\midrule
+\multirow{3}{*}{BERT-base (final) \emph{control}}
+  & none            & 45.25\,$\pm$0.97 & 45.00\,$\pm$1.51 \\
+  & \texttt{rms}    & 45.01\,$\pm$1.25 & 45.03\,$\pm$1.18 \\
+  & \texttt{median} & 44.98\,$\pm$1.00 & 45.08\,$\pm$0.83 \\
+\midrule
+\multirow{3}{*}{ModernBERT-base (L12)}
+  & none            & 18.64\,$\pm$10.16 & 23.22\,$\pm$6.17 \\
+  & \texttt{rms}    & \phantom{0}7.61\,$\pm$7.71 & 19.18\,$\pm$2.98 \\
+  & \texttt{median} & 24.60\,$\pm$7.12 & \textbf{28.54}\,$\pm$2.41 \\
+\midrule
+\multirow{3}{*}{ModernBERT-base (final)}
+  & none            & 37.53\,$\pm$1.09 & 35.62\,$\pm$6.00 \\
+  & \texttt{rms}    & 38.64\,$\pm$1.48 & 37.61\,$\pm$1.72 \\
+  & \texttt{median} & \textbf{38.87}\,$\pm$1.18 & 37.57\,$\pm$1.79 \\
+\midrule
+\multirow{3}{*}{RoBERTa-base (final)}
+  & none            & 52.39\,$\pm$2.33 & \textbf{52.87}\,$\pm$0.96 \\
+  & \texttt{rms}    & 52.55\,$\pm$1.55 & 52.63\,$\pm$1.42 \\
+  & \texttt{median} & 52.54\,$\pm$1.41 & 52.72\,$\pm$1.40 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\section{Decoder backbone}
+\label{app:decoder}
+
+TinyLlama-1.1B on STS-B, $10$ tuning trials per arm and $n=15$ shared
+confirmation seeds. The trial budget is lower than the BERT campaigns' $40$
+because a run here costs about four times as much; it is identical across the
+arms in this table, which is what the paired tests require, but it does mean
+these arms were selected from a coarser search than their BERT counterparts.
+Backbone chosen over SmolLM2 on measured geometry ($0.073$ density against
+BERT's $0.103$, whereas SmolLM2 sits at $0.741$). Minimum detectable effect
+$0.503$.
+
+\begin{center}
+\small
+\begin{tabular}{lccccc}
+\toprule
+Arm & mean & std & $\Delta$ & sign $p$ & pos/neg \\
+\midrule
+AC       & 80.15 & 0.54 & $+0.205$ & $0.302$ & 10/5 \\
+A        & 79.99 & 0.51 & $+0.043$ & $0.607$ & \phantom{0}9/6 \\
+baseline & 79.95 & 0.49 & \emph{ref} & --- & --- \\
+\midrule
+BC       & 78.78 & 0.95 & $-1.165$ & $0.00098$ & \phantom{0}1/14 \\
+AB       & 76.39 & 1.87 & $-3.556$ & $6\times10^{-5}$ & \phantom{0}0/15 \\
+ABC      & 75.44 & 3.58 & $-4.506$ & $6\times10^{-5}$ & \phantom{0}0/15 \\
+\midrule
+B        & \PEND & \PEND & \PEND & \PEND & \PEND \\
+C        & \PEND & \PEND & \PEND & \PEND & \PEND \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ordering matches BERT, and the standard deviation grows in step with the
+number of hyperbolic parts ($0.48 \rightarrow 0.95 \rightarrow 1.87 \rightarrow
+3.58$).
+
+\TODO{Two gaps here. B and C \emph{alone} were dropped from this sweep for
+cost, so the paper currently claims a decoder replication of Stage B without
+ever having run B by itself on a decoder; those rows are in flight. And a
+decoder CoLA campaign (8 arms, same 10-trial protocol) is running on a
+collaborator's machine --- it will be the first test of Stage C on any backbone
+other than BERT, which is the single largest gap in the paper's one positive
+result.}
+
+\section{Noise diagnostic}
+\label{app:stress}
+
+We reproduce the signal-in-noise test of \citet{mantri2026glot}: a short signal
+phrase carrying a logical dependency, injected into random distractor words,
+with the distractor ratio swept from $20\%$ to $90\%$. BERT, mean $\pm$ std over
+5 seeds; the original reports one seed.
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Arm & 20\% & 50\% & 80\% & 90\% \\
+\midrule
+AC       & 95.0\,$\pm$3.4 & 88.2\,$\pm$11.2 & 90.8\,$\pm$5.8 & \textbf{88.5}\,$\pm$8.9 \\
+C        & 95.0\,$\pm$3.3 & 87.6\,$\pm$11.2 & 90.8\,$\pm$5.9 & 88.4\,$\pm$8.8 \\
+A        & \textbf{97.0}\,$\pm$1.3 & \textbf{91.9}\,$\pm$4.1 & \textbf{91.0}\,$\pm$2.7 & 84.9\,$\pm$9.1 \\
+baseline & 96.0\,$\pm$0.5 & 90.2\,$\pm$5.0 & 88.1\,$\pm$4.7 & 79.8\,$\pm$10.8 \\
+B        & 95.4\,$\pm$1.4 & 88.7\,$\pm$2.8 & 83.8\,$\pm$13.8 & 75.5\,$\pm$14.9 \\
+\midrule
+Mean           & 73.5 & 63.2 & 64.0 & 57.4 \\
+\texttt{[CLS]} & 70.0 & 61.4 & 62.1 & 65.4 \\
+Max            & 63.0 & 55.2 & 53.1 & 51.8 \\
+\midrule
+\multicolumn{5}{l}{\emph{\citet{mantri2026glot} Table 7, BERT row (single seed):}} \\
+\textsc{Glot}  & 97.2 & 97.0 & 97.8 & 98.8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textsc{Glot}'s advantage over bag-of-tokens pooling is real and holds in every
+seed: mean, \texttt{[CLS]} and max lose $14$--$35$ points at every ratio, $0/5$
+seeds positive. Stage B is again last among the hyperbolic arms.
+
+\paragraph{We do not reproduce the published trained-pooler numbers.} At $90\%$
+distractors the original reports $98.8$ where we measure $79.8 \pm 10.8$ for the
+same method, and their curve is flat or rising under noise where ours falls. The
+divergence is not uniform: the static poolers agree closely ($-2.2$ to $+5.6$
+across twelve cells), while both \emph{trained} poolers diverge in opposite
+directions, so the $37$-point margin their Table 7 reports for \textsc{Glot}
+over AdaPool at $90\%$ becomes $-3.9$ in our hands. Their Appendix~B.4 does not
+give the vocabulary source, the signal templates, or the pooler budget, so we
+cannot localise the cause. We flag this as unresolved, and we never use the
+published values as a baseline.
+
+\section{GNN choice and training recipe}
+\label{app:factorial}
+
+\paragraph{GNN backbone.} Over 5 seeds at the published recipe, CoLA gives GAT
+$45.38 \pm 1.19$, GCN $45.14 \pm 1.78$, GIN $44.86 \pm 1.33$; STS-B gives
+$82.69 \pm 0.34$, $82.46 \pm 0.27$, $82.47 \pm 0.32$. Spread $0.52$ MCC and
+$0.23$ Spearman, inside seed noise, and GAT is the only one of the three that
+consumes edge attributes at all.
+
+\paragraph{The STS-B residual is not a recipe mismatch.} The released README
+trains differently from the paper's Appendix~B.2 (3 epochs,
+\texttt{scorer\_hidden} $256$, $\tau = 0.8$ against $2$, $128$, $0.6$). We ran
+the $2\times2\times2$ decomposition at seed $42$. Epoch count is the only factor
+that moves anything ($82.36 \rightarrow 82.66$); $\tau$ and
+\texttt{scorer\_hidden} are inert to within $0.04$. Over 5 seeds the two recipes
+are indistinguishable ($82.69 \pm 0.34$ against $82.69 \pm 0.23$). The best
+cell, $82.66$, is still $1.20$ below the published $83.86$, so the residual
+stands.
+
+\paragraph{Layer choice overfits.} Layer 8 beat layer 12 by $+4.62$ MCC on CoLA
+but only $+0.25$ on STS-B, and lost on RTE ($-0.36$) and MRPC ($-0.46$).
+
+\section{A retracted result of our own}
+\label{app:narrow}
+
+Under the graph-only search, Stage A on STS-B gave $\bar{d}=+0.223$,
+$t(14)=6.20$, sign $p=6\times10^{-5}$, $15/15$ seeds positive, and replicated on
+12 held-out seeds. It does not survive the wide search: $\bar{d}=+0.028$,
+$t=0.69$, $9/5$. The effect was real but its cause was not geometry --- the
+baseline had been pinned at $K=2$, $h=128$ while nothing else was, and it
+recovers the whole gap once it can choose $K=4$. This is the clearest
+illustration of the paper's own point: a pooling comparison is only as good as
+the budget given to its control.
+
+\section{Long-text and retrieval benchmarks}
+\label{app:docmteb}
+
+\citet{mantri2026glot} also report IMDB (long-text classification) and seven
+MTEB tasks \citep{muennighoff2022mteb} (zero-shot retrieval and clustering). We
+ran both, early in the project, at a single seed and on BERT only. We report them here for coverage and
+draw no statistical conclusion: with $n=1$ there is no test to run.
+
+\paragraph{The MTEB rows evaluate an untrained pooler, and we report them only
+so the record is complete.} \citet{mantri2026glot} obtain their MTEB numbers by
+contrastively training the pooler on MS MARCO triplets and then evaluating
+zero-shot. \emph{We never ran that stage.} Our driver never sets
+\texttt{checkpoint\_path}, and the evaluation entry point loads pooler weights
+only when that argument is set, so every MTEB row below was produced by a pooler
+at its random initialisation on top of the frozen backbone. The wall-clock times
+confirm it: $7$--$171$ seconds per task, which is inference and nothing else.
+The consequence is that the three MTEB columns differ only by random
+initialisation --- they agree to the third decimal on five of seven tasks --- and
+they carry no information about Stage A whatsoever. We leave them in place
+because an earlier draft of this paper described them as trained, and silently
+deleting the table would hide that correction. The IMDB rows are unaffected:
+that task trains the pooler normally.
+
+\paragraph{One of these rows is not what its name says.} These runs predate our
+switch to quantile thresholding. The \texttt{A\_threshold} arm used an absolute
+radius $\rho = 1.0$ on unnormalised BERT features, and as
+Appendix~\ref{app:defects} explains, real Poincar\'e distances there lie in
+$[8.85, 11.76]$ --- so that arm trained on an empty graph and is \emph{not} a
+Stage A result. We keep the column only so it cannot be mistaken for one.
+\texttt{A\_knn} used a $k$-NN Poincar\'e graph and is a genuine Stage A variant.
+
+\begin{table}[h]
+\caption{IMDB accuracy and MTEB main scores ($\times 100$), BERT-base, seed $42$,
+one run per cell. The middle column is the $\rho$-defect run described above; it
+trained on an empty graph and is not a Stage A measurement. \textbf{The MTEB
+block evaluates an \emph{untrained} pooler} --- we did not run the MS MARCO
+contrastive stage --- so those three columns differ only by random
+initialisation and measure nothing about the method. The seven tasks are those
+of \citet{mantri2026glot}.}
+\label{tab:docmteb}
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+ & \textsc{Glot} & $\rho$-defect$^{\dagger}$ & Stage A \\
+ & (cosine) & (empty graph) & ($k$-NN) \\
+\midrule
+IMDB (acc.) & 92.26 & \textbf{92.50} & 92.46 \\
+\midrule
+Banking77Classification    & 46.91 & 46.90 & \textbf{46.91} \\
+STS12                      & 30.02 & \textbf{30.04} & 27.68 \\
+STS13                      & 59.57 & 59.60 & \textbf{59.83} \\
+SciFact                    & 13.93 & \textbf{14.10} & 13.39 \\
+ArguAna                    & \textbf{28.25} & 28.11 & 27.73 \\
+TwentyNewsgroupsClustering & 24.49 & 24.13 & \textbf{25.10} \\
+SprintDuplicateQuestions   & \textbf{34.67} & 34.57 & 34.40 \\
+\midrule
+MTEB mean                  & \textbf{33.98} & 33.92 & 33.58 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Across seven MTEB tasks the largest gap to the baseline is $2.34$, on a task
+where all three columns sit within a few points of each other --- which is what
+a random pooler evaluated three times should look like. Nothing here is
+separable at one seed, and neither Stage B nor Stage C was ever run on these
+benchmarks. Doing it properly is expensive on the IMDB side: our runs took $3.8$
+hours each at $512$ tokens, so eight arms $\times$ $15$ seeds would be roughly
+$20$ days. The MTEB side is cheap to \emph{evaluate} (all seven tasks take about
+eight minutes) but requires building the MS MARCO contrastive stage first.
+
+\TODO{Both gaps are now being addressed on separate hardware: a corrected MTEB
+pipeline that actually trains the pooler on MS MARCO before evaluating, and
+IMDB on arms baseline, A, C and AC at five seeds. When they land, this appendix
+is rewritten and the untrained-pooler table above is replaced rather than
+amended. Note that $n=5$ cannot reach our both-tests significance bar --- the
+exact sign test bottoms out at $p=0.0625$ --- so the result will be a lead, of
+the same status as Table~\ref{tab:fix}, and must be worded that way.}
+
+\section{Notes for reproducers}
+\label{app:defects}
+
+Three details of the released code cost us time. None affects the conclusions of
+the original paper.
+
+\begin{itemize}
+\itemsep1pt
+\item \texttt{jk\_mode=lstm} is accepted by the parser but crashes at runtime,
+      and the advertised \texttt{mean} and \texttt{none} are not implemented.
+      The usable space is $\{$\texttt{cat}, \texttt{max}$\}$.
+\item Thresholding Poincar\'e \emph{distance} at a fixed radius gives an empty
+      graph on real features (see \S\ref{sec:method}). The signature is a score
+      that is bit-identical across a whole threshold grid. We use a quantile
+      threshold everywhere for this reason.
+\item The logged edge-density counts self-loops in the numerator but excludes
+      the diagonal from the denominator, so an \emph{empty} graph logs
+      $1/(n{-}1) \approx 0.10$ at CoLA's typical length rather than $0$. This is
+      a reporting defect only --- no training path reads the statistic --- but it
+      is a trap for exactly the audit this paper performs. It was corrected
+      partway through the project, so the CoLA logs carry the offset and the
+      later MRPC logs do not; densities are not comparable across campaigns
+      without checking. Any density we quote is re-measured with the standalone
+      instrument of Table~\ref{tab:density}, never taken from training
+      telemetry.
+\end{itemize}
+
+\section{Structural graph variants}
+\label{app:structural}
+
+Since the geometric arms are flat on CoLA, MRPC and RTE, we also tried a
+\emph{structural} prior: positional edges joining tokens with $|i-j| \leq w$,
+positional-only graphs, their union with Stage A, and $k$-NN graphs. Tuning
+maxima over 10 trials: baseline $45.32$, POS $47.08$, POS\_ONLY $46.80$, A\_POS
+$44.87$, KNN $45.32$.
+
+\textbf{These are tuning maxima and are not results.} At CoLA's noise level
+($\sigma = 2.09$) the expected inflation of a best-of-10 is $\approx 3.22$ MCC,
+which exceeds every gap in the list including POS's apparent $+1.76$ lead. We
+report them because the arms are implemented and released, but draw no
+conclusion. Confirming them on 15 paired seeds is the most obvious extension we
+did not run.
+
+\section{Limitations}
+\label{app:limitations}
+
+\begin{itemize}
+\itemsep1pt
+\item \textbf{Stage C's gain is real but unattributed.} The $2\times2$ of
+      Table~\ref{tab:factorial} decomposes $+1.42$ MCC exactly into geometry
+      ($+0.40$), configuration ($-0.01$) and interaction ($+1.03$), and none of
+      the three is significant at $n=15$ even though the total is. Resolving the
+      interaction needs about $65$ seeds. Until then we can say the effect
+      requires both the denser graph and the curved message passing, but not
+      which is responsible. It also does not reach MRPC and was never run on the
+      decoder.
+\item \textbf{We select the epoch on the split we report}, because GLUE test
+      labels are not public. This is a smaller version of the practice we
+      criticise in \S\ref{sec:choices}. Splitting the development set into
+      selection and reporting halves would remove the objection, and is the
+      single most valuable improvement to this protocol.
+\item \textbf{One reproduction residual is unexplained.} STS-B stays $0.87$
+      short under every estimator we tried; we tested and ruled out the leading
+      hypothesis (Appendix~\ref{app:factorial}).
+\item \textbf{The scale factorial is underpowered.} At $n=5$ the exact sign test
+      cannot fall below $p = 0.0625$, so no contrast in Table~\ref{tab:fix} can
+      meet our own bar.
+\item \textbf{Non-Euclidean layers may need structure-aware optimisation.} We
+      gave every arm the full grid, and the search did move the learning rate
+      per arm and per task rather than pinning it to a flat-tuned value. But we
+      did not implement per-manifold Riemannian optimisation or curvature-aware
+      initialisation. This is the strongest available objection to our Stage B
+      negative, and we state it rather than merely acknowledging it.
+\item \textbf{Every task we ran is small, and that may explain Stage B.} CoLA,
+      STS-B, MRPC and RTE have $8{,}551$, $5{,}749$, $3{,}668$ and $2{,}490$
+      training examples. Stage B hurts by amplifying seed variance, which more
+      data suppresses, so its harm may not survive at scale --- and RTE, the
+      smallest, is the one task where B-containing arms trend positive. We could
+      not test this: at $495$ runs per task our design costs an estimated $170$
+      hours for SST-2, $264$ for QNLI, and $38$ and $41$ days for QQP and MNLI.
+      A reduced design --- four arms, confirmation seeds only, reusing the
+      CoLA-selected configuration --- brings SST-2 to roughly $21$ GPU-hours and
+      is the single most valuable experiment this paper is missing.
+\item \textbf{RTE is underpowered and contributes nothing.} With $277$
+      evaluation examples and a seed standard deviation of $3.36$, its minimum
+      detectable effect is $2.7$ accuracy points. All seven hyperbolic arms are
+      nominally positive there and not one is significant. We include it for
+      completeness and base no conclusion on it.
+\item \textbf{Coverage.} \citet{mantri2026glot} report ten GLUE tasks on six
+      backbones, plus IMDB and seven MTEB tasks. We report four GLUE tasks with
+      the full nine-arm design on BERT, two with the same nine-arm design on
+      RoBERTa, one on TinyLlama, a
+      synthetic noise task, and IMDB plus the same seven MTEB tasks at a single
+      seed for the graph stage only, the latter with an untrained pooler
+      (Appendix~\ref{app:docmteb}). We never ran
+      Mean, Max or \texttt{[CLS]} on GLUE, so we cannot reproduce their
+      method-comparison table; our rows are \textsc{Glot}'s own components.
+\item \textbf{The stages replicate; their interaction does not.} Stage B's harm
+      reproduces across two encoders and a decoder at closely matching effect
+      sizes, but the sign of the B$\times$C interaction differs between all four
+      encoder settings (\S\ref{sec:results}), and at the extremes it is
+      Bonferroni-significant in both directions. We have no account of why. This
+      bounds what a component-wise study of this kind can deliver: individual
+      stages generalise, but a two-stage combination has to be measured on the
+      backbone and task where it will be used.
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,21 @@
+
+  192 CoLA validation sentences, max_length=128, off-diagonal pairs only, self-loops excluded
+
+  Backbone               p10     p50     p90    t=0.1    t=0.3    t=0.6
+  ---------------------------------------------------------------------
+  BERT-base            0.098   0.328   0.595    0.876    0.505    0.103
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-base and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+  RoBERTa-base         0.693   0.821   0.897    1.000    1.000    0.991
+  ModernBERT-base      0.076   0.648   0.768    0.866    0.759    0.599
+  SmolLM2-360M         0.322   0.774   0.911    0.956    0.908    0.741
+  TinyLlama-1.1B       0.016   0.343   0.588    0.762    0.533    0.073
+
+  LaTeX rows for tab:density
+
+    BERT-base         & 0.098 & 0.328 & 0.595 & 0.876 & 0.505 & 0.103 \\
+    RoBERTa-base      & 0.693 & 0.821 & 0.897 & 1.000 & 1.000 & 0.991 \\
+    ModernBERT-base   & 0.076 & 0.648 & 0.768 & 0.866 & 0.759 & 0.599 \\
+    SmolLM2-360M      & 0.322 & 0.774 & 0.911 & 0.956 & 0.908 & 0.741 \\
+    TinyLlama-1.1B    & 0.016 & 0.343 & 0.588 & 0.762 & 0.533 & 0.073 \\
+
