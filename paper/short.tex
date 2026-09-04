@@ -20,14 +20,6 @@
 \usepackage{multirow}
 \usepackage{xcolor}
 
-% ===== DRAFT MACHINERY -- delete this block and every use of it before
-% submission. \PEND marks a table cell whose experiment has not been run;
-% \TODO marks prose that will have to be restated when it lands. Each one is a
-% real gap, never a rounding or formatting placeholder: no cell in this paper
-% is filled with a guess.
-\newcommand{\PEND}{\textcolor{red}{\textbf{??}}}
-\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
-
 % \iclrfinalcopy turns off the anonymous author block and the grey
 % line-number ruler in the margin. It also switches the running head to
 % "Published as a conference paper at ICLR 2026", which is not true of this
@@ -58,20 +50,20 @@ places --- how the graph is built (\textbf{Stage A}), how states are pooled
 each independently and give all eight combinations the same search budget over
 fifteen shared seeds.
 
-The effects are conditional on stage, task, backbone, and training regime:
-the same substitution can help or hurt. The largest effects are Stage B gains
-and losses under contrastive training and zero-shot evaluation: $+10.5$
-Spearman on STS12 and $-15.5$ max-AP on TwitterSemEval2015, both $15/15$ seeds
-and surviving family-wise correction. Stage B, the readout, is
-reliably harmful under supervised fine-tuning --- on two encoders and a decoder,
-the effect size replicating to within $0.2$ Spearman --- because it amplifies
-seed variance rather than acting as a useful prior; yet trained contrastively
-and evaluated zero-shot it is worth $+10.5$ on STS12 and $-15.5$ max-AP on
-TwitterSemEval2015. Stage C's previously reported CoLA gain cannot be attributed
-to curvature: its hyperbolic layers duplicated graph-builder self-loops. We
-therefore report a new, internally matched four-cell factorial as pending rather
-than treating the affected result as evidence. Stage A, the graph, separates on
-CoLA at fifty seeds and nowhere else.
+The effects are conditional on stage, task, backbone and training regime: the
+same substitution can help or hurt, and no stage has a single direction. The
+largest appear under contrastive training with zero-shot evaluation, where arms
+containing the hyperbolic readout are worth $+17.1$ Spearman on STS12 and
+$-15.5$ max-AP on TwitterSemEval2015. Under supervised fine-tuning that same readout is reliably
+harmful --- negative on two encoders and a decoder, by up to $10.3$ MCC, with a
+seed-variance signature that suggests why --- but the harm does not survive
+scale: on SST-2, eight times larger than any other task we ran, it is no longer
+distinguishable from the baseline. Stage C's apparent CoLA gain is not
+curvature. A matched $2\times2$ at $65$ seeds, run after closing two
+control-parity defects we found in our own code, puts the geometry term at
+$+0.50$ (n.s.) against $+1.14$ for the configuration it was confounded with.
+Stage A separates from the baseline on CoLA at fifty seeds, and is
+significantly negative on six of seven RoBERTa retrieval tasks.
 
 Two methodological findings travel beyond this architecture. Low
 $\delta$-hyperbolicity, the usual justification for going hyperbolic, is an
@@ -81,127 +73,6 @@ $0.2114$), while the Euclidean version differs between them by two orders of
 magnitude. And a seed does not pin a run --- re-running one configuration at one
 seed moves CoLA by up to $3.6$ MCC, more than the effects being measured.
 \end{abstract}
-
-%=========================================================================
-% DRAFT STATUS -- DELETE THIS ENTIRE SECTION BEFORE SUBMISSION
-%=========================================================================
-\section*{\textcolor{red}{Draft status}}
-
-\textcolor{red}{Every number in this draft was recomputed from the released
-campaign CSVs; nothing is transcribed from an earlier revision. The audit
-changed fourteen values and one conclusion, and those changes are recorded in
-Appendix~\ref{app:audit} rather than made silently. Four queued runs landed on
-31 August --- the $65$-seed factorial, Stage A at $n{=}50$, and the decoder's B
-and C arms --- and each of them changed something; those changes are recorded
-there too.}
-
-\subsection*{\textcolor{red}{What is missing}}
-
-\begin{center}
-\footnotesize
-\begin{tabular}{p{0.26\textwidth}p{0.40\textwidth}p{0.25\textwidth}}
-\toprule
-Experiment & What it would settle & Status \\
-\midrule
-\multicolumn{3}{l}{\emph{Running or queued. Two machines; everything below
-lands within about two days.}} \\
-\midrule
-TinyLlama CoLA, $9$ arms
-  & The first test of any stage on a decoder task other than STS-B, and the
-    last decoder column we intend to fill
-  & \emph{running}, $50/135$ confirmation rows, $\approx$13\,h left \\
-MTEB, RoBERTa block: $6$ arms $\times$ $15$ seeds
-  & Whether Stage B's regime reversal is BERT-specific --- the readout flips
-    from reliably harmful under fine-tuning to the two largest effects in the
-    paper under contrastive training, and one backbone cannot separate
-    ``regime'' from ``BERT''
-  & \emph{running}. It had not run at all: the queue passed
-    \texttt{roberta-base} while the driver is keyed on
-    \texttt{FacebookAI/roberta-base}, so all $90$ units were skipped in under
-    a second (Appendix~\ref{app:mteb3}). Fixed and relaunched;
-    $\approx$42\,h, measured from the BERT block \\
-\textbf{Corrective Stage C factorial}: $2\times2$, $65$ seeds, all four cells
-fresh, control parity closed
-  & The only experiment that can attribute Stage C's CoLA gain to curvature.
-    The $n{=}65$ factorial ran before both parity defects of
-    Appendix~\ref{app:defects} were closed, so its geometry term is not a
-    curvature measurement
-  & \emph{queued}, first job after CoLA. Parity verified by
-    \texttt{test\_edge\_parity.py}; seed-major; $\approx$10\,h measured from
-    the previous run's $260$ cells \\
-Matched decoder STS-B: baseline, B, C, $15$ seeds, one file
-  & Makes the decoder B and C deltas admissible. They currently subtract a
-    baseline from a campaign four days older --- the splice
-    Appendix~\ref{app:determinism} forbids --- and no arm is shared between the
-    two campaigns, so the drift cannot even be bounded
-  & \emph{queued} behind the factorial, $\approx$10\,h at the measured
-    $0.22$\,h/run. Configurations are lifted from the existing confirmed rows,
-    so nothing is re-tuned \\
-SST-2 reduced design: baseline, B, C, BC; $15$ seeds
-  & The last live confound. Stage B fails by amplifying seed variance, and
-    variance shrinks with data, so the paper's firmest result may be a
-    small-data artifact. SST-2 is $67{,}349$ examples, $7.9\times$ CoLA, and is
-    \emph{not} one of the tasks the original caps at \texttt{train[:20000]}
-  & \emph{queued} last, after a cache build. $13$--$20$\,h: our fitted cost
-    model says $785$\,s a run and the worker script assumes $1{,}200$, and the
-    run will settle which. Reduced designs cannot rank arms --- see below \\
-\midrule
-\multicolumn{3}{l}{\emph{Deliberately not scheduled. These are decisions, not
-gaps we ran out of time for.}} \\
-\midrule
-TinyLlama MRPC, $9$ arms
-  & Nothing we can identify. MRPC's whole nine-arm spread is $0.37$ F1 on BERT
-    and $0.33$ on RoBERTa against a minimum detectable effect of $0.317$, so a
-    third such column would be a third null
-  & \emph{retired}. The $\approx$22\,h buys a fourth backbone-by-task cell of
-    noise, while the matched decoder campaign costs less and repairs an
-    inadmissible result. Those cells are dashes, not \PEND{} \\
-MTEB, TinyLlama block
-  & A third backbone for the regime question
-  & \emph{lowest priority}: $\approx$41\,h and the RoBERTa block answers the
-    same question first. Runs only if the queue reaches it \\
-Mean / Max / \texttt{[CLS]} / AdaPool on GLUE
-  & Would let Table~\ref{tab:absolute} reproduce the \emph{content} of the
-    original's Table 1 rather than only its layout
-  & reachable since the pooler was made configurable; not run \\
-IMDB, arms baseline, A, C, AC
-  & A long-text test of Stages A and C
-  & $\approx$20 days at $15$ seeds, $79$\,GB of cache. Out of reach \\
-Related work
-  & \S\ref{sec:related}
-  & drafted; venues and pages unconfirmed for the entries marked so in
-    \texttt{references.bib} \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\subsection*{\textcolor{red}{What could still change a conclusion}}
-
-\textcolor{red}{Two things changed since the last revision, and both cut
-against us. First, \emph{Stage C's attribution is withdrawn, not weakened}: the
-hyperbolic layers duplicated the graph builder's self-loops and the Euclidean
-control consumes an edge attribute the hyperbolic layer ignores, so every
-existing geometry contrast varies more than curvature
-(Appendix~\ref{app:defects}). Both are now fixed and verified by a forward-pass
-test, but the $n{=}65$ factorial ran before the fix, so its $+0.534$ geometry
-term measures the uncorrected layer. The corrective factorial is the next job
-on GPU 1. Second, the MTEB BERT block completed all six arms, and ABC turns out
-to track B on all seven tasks --- including $+5.57$ on SciFact, the
-second-largest positive in the paper --- which strengthens the reading that the
-readout, not the graph or the message passing, sets the outcome in that regime
-(Appendix~\ref{app:mteb3}).}
-
-\textcolor{red}{What remains open, and what will close it. (i) Stage C's
-attribution: the corrective factorial is queued and is the only run that can
-return a curvature estimate. (ii) Whether Stage B's regime reversal is
-BERT-specific: the RoBERTa MTEB block is running, and until it lands one
-backbone cannot separate ``regime'' from ``BERT''. (iii) The small-data
-confound on Stage B: SST-2 is queued last. (iv) The decoder's B and C arms,
-inadmissible until the matched campaign lands. All four are scheduled and
-should report within about two days. What is \emph{not} scheduled, and will
-therefore stand as a limitation in any submitted version: whether Stage A's
-CoLA positive survives on a second task at $n{=}50$, the bag-of-tokens rows of
-Table~\ref{tab:absolute}, and IMDB.}
 
 %-------------------------------------------------------------------------
 \section{Introduction}
@@ -324,14 +195,14 @@ Table~\ref{tab:absolute} gives every absolute score, laid out like Table 1 of
 this section discusses. Both are in Appendix~\ref{app:results}.
 
 %-------------------------------------------------------------------------
-\subsection{Stage A --- the hyperbolic graph: positive on CoLA, null elsewhere}
+\subsection{Stage A --- the hyperbolic graph: positive on one task, negative on retrieval}
 \label{sec:stageA}
 
-Stage A is nominally ahead of the baseline in seven of the ten settings we ran
-it in (Table~\ref{tab:verdict}), and ahead at all four distractor ratios of the
-noise diagnostic (Appendix~\ref{app:stress}), but at $n=15$ it reached
-significance in none of them: the strongest was CoLA, at $t=2.37$ with a
-sign-test $p$ of $0.118$, which fails our both-tests rule.
+Stage A is nominally ahead of the baseline in eight of the eleven fine-tuning
+settings we ran it in (Table~\ref{tab:verdict}), and ahead at all four
+distractor ratios of the noise diagnostic (Appendix~\ref{app:stress}), but at
+$n=15$ it reached significance in none of them: the strongest was CoLA, at
+$t=2.37$ with a sign-test $p$ of $0.118$, which fails our both-tests rule.
 
 \paragraph{So we powered it and it separated.} CoLA was the cheapest setting in
 which to settle this, and we committed in advance to $n=50$ and to reporting
@@ -344,109 +215,127 @@ run seeds agree with the $15$ carried over from the wide campaign ($+0.892$
 against $+0.700$), so the effect is not an artifact of the seeds that suggested
 it.
 
-\textbf{Verdict: positive on CoLA, null everywhere else.} This is the one place
-where more seeds converted a trend into a result, and it is worth being precise
-about how little that buys: CoLA is one setting of ten, the effect is $0.83$
-MCC, and Stage A remains flat or slightly negative on STS-B, both MRPC columns,
-BERT and RoBERTa RTE and the decoder's STS-B. We claim Stage A helps on CoLA; we
-do not claim the Poincar\'e graph helps in general, and a sign test over the
-other nine settings gives $p=0.51$.
+\textbf{Verdict: positive on CoLA, null on the other fine-tuning settings, and
+negative on retrieval.} This is the one place where more seeds converted a trend
+into a result, and it is worth being precise about how little that buys: CoLA is
+one fine-tuning setting of eleven, the effect is $0.83$ MCC, and Stage A remains
+flat on STS-B, both MRPC columns, BERT and RoBERTa RTE and both decoder columns.
+A sign test over the other ten fine-tuning settings gives $p=0.34$. And under
+contrastive training it is not merely null: on RoBERTa retrieval Stage A is
+significantly negative on six of seven tasks, four of them surviving Bonferroni
+at $0/15$ seeds (Appendix~\ref{app:mteb3}). That is the same direction as the
+density repair of \S\ref{sec:porting}, which also replaces RoBERTa's
+near-complete cosine graph with a sparser one and also costs accuracy. We claim
+Stage A helps on CoLA; we do not claim the Poincar\'e graph helps in general.
 
 %-------------------------------------------------------------------------
-\subsection{Stage B --- the hyperbolic readout: harmful, and this is the firmest result in the paper}
+\subsection{Stage B --- the hyperbolic readout: harmful, within limits we had to find}
 \label{sec:stageB}
 
 Every arm containing Stage B loses $0.75$--$1.24$ Spearman on BERT STS-B, with
-$0$ or $1$ of $15$ seeds positive. B alone gives $t=-17.00$ with $0/15$ seeds
-and a sign-test $p$ of $6\times10^{-5}$, the smallest value $15$ paired seeds
-can produce. All four B-containing arms survive Bonferroni. The result repeats
-on a decoder backbone, TinyLlama, where AB costs $3.56$ Spearman and ABC costs
-$4.51$, both $0/15$ and both Bonferroni-significant.
+$0$ or $1$ of $15$ seeds positive; B alone gives $t=-17.00$ and a sign-test $p$
+of $6\times10^{-5}$, the smallest value $15$ paired seeds can produce. All four
+survive Bonferroni. It repeats on RoBERTa STS-B at closely matching effect
+sizes ($-1.264$ for B against $-1.065$ on BERT, $-0.795$ for AB against
+$-0.747$), and on the decoder in a campaign that ran its own baseline at the
+same seeds ($-1.16$, $2/13$, $t=-3.53$). On the decoder's CoLA it is far larger:
+B costs $10.26$ MCC and AB costs $13.58$, both $0/15$ and both
+Bonferroni-significant, the two biggest effects in any of our fine-tuning
+tables.
 
-It repeats on a \emph{second encoder} at closely matching effect sizes: on
-RoBERTa STS-B, B alone costs $1.264$ Spearman ($t=-15.76$, $0/15$) against
-$1.065$ on BERT, and AB costs $0.795$ against $0.747$; all four survive
-Bonferroni on both backbones. Stage B alone is negative in all four encoder
-settings we can measure it in, and $15$ of the $16$ B-containing cells across
-those settings are negative. B alone has now also been run on the decoder and is
-negative there ($78.78 \pm 1.05$ against a baseline of $79.95 \pm 0.49$) --- but
-that campaign holds no baseline of its own, so the difference splices two
-campaigns, which our own rule forbids. We mark it $\S$, decline to test it, and
-give the full account in Appendix~\ref{app:decoder}; fifteen baseline seeds
-inside that campaign, about four GPU-hours, would close it.
-
-\paragraph{There is a mechanism, not just a mean.} On the decoder the seed
-standard deviation rises in step with the number of hyperbolic parts:
+\paragraph{There is a mechanism, not just a mean.} On the decoder's STS-B the
+seed standard deviation rises in step with the number of hyperbolic parts:
 $0.49 \rightarrow 0.95 \rightarrow 1.87 \rightarrow 3.58$ for baseline, BC, AB
-and ABC, a $7.3\times$ spread. The gyro-midpoint behaves like a variance
-amplifier rather than a useful prior. It is also the stage whose theoretical
-motivation is weakest here: pooling averages tokens the graph has already
-smoothed, and the Einstein midpoint's curvature dependence pulls hardest exactly
-on the large-norm tokens that Appendix~\ref{app:calib} shows are outliers.
+and ABC. The gyro-midpoint behaves like a variance amplifier rather than a
+useful prior --- and at the extreme it stops being a variance effect at all: two
+of AB's fifteen decoder CoLA seeds collapse to $\mathrm{MCC}=0$, the
+majority-class predictor. It is also the stage whose theoretical motivation is
+weakest here, since pooling averages tokens the graph has already smoothed and
+the Einstein midpoint pulls hardest on exactly the large-norm tokens
+Appendix~\ref{app:calib} shows to be outliers.
 
 \paragraph{RTE changes direction with the backbone.} On BERT all four
 B-containing arms are positive and none is significant or could be --- that
 column's minimum detectable effect, $2.06$ points, exceeds every effect in the
 block. On RoBERTa, B and AB are significantly \emph{negative}. On the decoder
-all four are positive again and BC reaches $+4.33$ with $14/15$ seeds, surviving
-Bonferroni --- the only B-containing arm anywhere in our \emph{GLUE} tables that
-is significantly better than its baseline, though that column's baseline sits at
-chance (Appendix~\ref{app:chance}). On MTEB, by contrast, B and ABC are both
-significantly better than baseline on two tasks each
-(Appendix~\ref{app:mteb3}).
+all four are positive and BC reaches $+4.33$ with $14/15$ seeds, the only
+B-containing arm in our fine-tuning tables significantly better than its
+baseline --- though that column's baseline sits at chance
+(Appendix~\ref{app:chance}).
 
-\paragraph{On zero-shot retrieval the sign is not stable, and this bounds the
-claim.} With the pooler contrastively trained on MS MARCO and evaluated
-zero-shot (Appendix~\ref{app:mteb3}), Stage B produces the largest effects in
-this paper \emph{in both directions}: $+10.46$ Spearman on STS12 and $+3.86$
-ndcg on SciFact, both $15/15$ seeds positive, against $-15.54$ max-AP on
-TwitterSemEval2015 and $-3.04$ accuracy on EmotionClassification, both $0/15$.
-All four survive Bonferroni on a benchmark better powered than CoLA. The
-gyro-midpoint is therefore not harmful \emph{as an operator}; it is harmful in
-the supervised fine-tuning regime we measured it in, and helpful on some
-zero-shot similarity tasks.
-
-\textbf{Verdict: harmful on the fine-tuning tasks that measure it precisely,
-across two encoders and a decoder --- and not harmful as an operator.} The claim
-we are entitled to is about a readout in a regime, not about the gyro-midpoint.
-One confound remains: every GLUE task we ran has at most $8{,}551$ training
-examples and variance amplification is a quantity more data suppresses, so the
-negative may be a small-data effect. SST-2 would settle it and is scheduled
-last, so at present the confound stands (Appendix~\ref{app:limitations}).
+\textbf{Verdict: harmful under supervised fine-tuning on small tasks; helpful
+or neutral elsewhere.} Two boundaries matter more than the operator. The first
+is \emph{data}: SST-2 has $67{,}349$ training examples, $7.9\times$ CoLA, and
+there B is $+0.65$ accuracy with $10/5$ seeds --- resolved by the $t$-test, not
+by the sign test, so by our own rule a null rather than a gain
+(Appendix~\ref{app:sst2}). Its variance amplification shrinks in step, from
+$1.98\times$ the baseline standard deviation on decoder STS-B to $1.47\times$.
+The second is \emph{regime}: trained contrastively on MS MARCO and evaluated
+zero-shot, arms containing this readout produce the largest effects in the paper
+in both directions. On BERT, B is positive on two of seven tasks and negative on
+four; on RoBERTa the balance inverts to four positive ($+12.80$ on STS12,
+$+5.08$ on SciFact, $+4.68$ on SummEval, $+4.29$ on RedditClustering, all
+$15/15$) and one negative ($-6.13$, $0/15$), all five surviving Bonferroni. The
+claim we are entitled to is about a readout in a regime and at a scale, not
+about the gyro-midpoint.
 
 %-------------------------------------------------------------------------
-\subsection{Stage C --- hyperbolic message passing: attribution remains unresolved}
+\subsection{Stage C --- hyperbolic message passing: the gain is configuration, not curvature}
 \label{sec:stageC}
 
-The original Stage C implementation appended a self-loop to every loop already
-emitted by the graph builder, whereas the Euclidean GAT control first removes
-such loops. This changes the relative self-weight and confounds every existing
-geometry contrast. The affected BERT CoLA result and the $65$-seed factorial are
-retained as an implementation record, but are not used to claim a Stage C effect
-or curvature attribution.
+Stage C is the one arm that looks like a win on CoLA: $+1.42$ MCC against the
+BERT baseline, significant on both tests. It is also the arm whose selected
+configuration differs from the baseline's in two ways at once --- a
+$3.6\times$ denser graph and a network half as deep and half as wide --- so the
+contrast confounds curvature with configuration.
 
-\paragraph{Corrective design.} The repaired implementation removes existing
-self-loops before adding exactly one, matching the Euclidean control. A new
-$2\times2$ factorial reruns all four configuration-by-geometry cells within one
-seed-major campaign at the pre-specified $65$ seeds. It must not reuse either
-Euclidean cell from the affected campaign: measured non-determinism makes
-cross-campaign differencing inadmissible. Until this factorial is complete, the
-only defensible Stage C conclusion is that its direction and attribution are
-unresolved.
+Two further asymmetries were ours, not the original's. Our hyperbolic layers
+appended a self-loop to every loop the graph builder already emitted, while the
+Euclidean control removes existing loops first; and the Euclidean control
+consumes an edge attribute the hyperbolic layer ignores, which is not inert
+because it enters before a leaky ReLU (Appendix~\ref{app:defects}). Both are
+now fixed and verified by a forward-pass test.
+
+\paragraph{The matched factorial.} We reran the full $2\times2$ --- geometry
+$\times$ configuration --- at $65$ seeds with parity closed, all four cells in
+one campaign (Appendix~\ref{app:factorial2x2}). The total reproduces the arm
+level effect at $+1.862$ ($51/14$, $t=6.51$). The decomposition does not
+support attributing it to curvature: geometry alone is $+0.502$ and significant
+on neither test ($t=1.45$, sign $p=0.136$), configuration alone is $+1.136$ and
+significant on both, and the interaction is $+0.224$ at $33/32$ seeds.
+
+Closing the two parity defects moved the geometry term by $0.032$ MCC, from
+$+0.534$ to $+0.502$. The confound was real and had to be repaired before the
+contrast was admissible; it was not what made Stage C look good.
+
+\textbf{Verdict: Stage C helps on BERT CoLA, and the help is not the manifold.}
+On RoBERTa retrieval it is significantly negative on three of seven tasks
+(Appendix~\ref{app:mteb3}), and on the decoder's CoLA it costs $2.96$ MCC.
 
 %-------------------------------------------------------------------------
 \subsection{How the stages combine does not transfer}
 \label{sec:interaction}
 
-Stage B's harm is stable; what happens when the hyperbolic GNN is added on top
-of it is not. Adding C to B rescues the arm in two settings, worsens it in two
-others, and does nothing in a fifth (Table~\ref{tab:bxc}). The extremes are not
-noise: BC and ABC on RoBERTa CoLA lose $2.16$ and $3.31$ MCC and both survive
-Bonferroni, while the same two arms on RoBERTa STS-B are flat. So a
-two-component summary of the form ``B harms, C offsets it'' is not supported.
-Stage B's harm is a property of the readout, reproducible across backbones and
-tasks; the sign of the B$\times$C interaction is a property of the particular
-task and backbone, and we cannot predict it.
+Stage B's harm is stable under fine-tuning; what happens when the hyperbolic GNN
+is added on top of it is not. Adding C to B rescues the arm in three settings,
+worsens it in two, and does nothing in two more (Table~\ref{tab:bxc}). The
+extremes are not noise: BC and ABC on RoBERTa CoLA lose $2.16$ and $3.31$ MCC
+and both survive Bonferroni, while on the decoder's CoLA adding C to B recovers
+over nine of the $10.26$ MCC B costs. So a two-component summary of the form
+``B harms, C offsets it'' is not supported. Stage B's harm is a property of the
+readout, reproducible across backbones and tasks; the sign of the B$\times$C
+interaction is a property of the particular task and backbone, and we cannot
+predict it.
+
+\paragraph{The same instability appears on retrieval, with the opposite
+resolution.} On BERT, ABC reproduces B's pattern on all seven MTEB tasks and on
+the same side of zero --- the readout sets the outcome and the graph and message
+passing ride along. On RoBERTa it does not: A alone and C alone are each
+significantly negative on several tasks, AC is negative on five, and yet ABC is
+positive on six and larger than B alone on every one of them
+(Appendix~\ref{app:mteb3}). Stages that hurt in isolation help when stacked on
+B. We have no account of why, and it is the sharpest form of the same lesson:
+how the stages combine is a property of the regime, not of the operators.
 
 \paragraph{Why the stage-wise design was necessary.} B and C carry opposite
 signs, so a study that turned ``hyperbolic'' on as one switch would have
@@ -496,9 +385,10 @@ is the bar any geometry claim has to clear first, and Stage C clears it on BERT
 STS-B and fails it on BERT CoLA.
 
 \paragraph{Scope.} We report four GLUE tasks with the full nine-arm design on
-BERT-base \citep{devlin2019bert}, two on RoBERTa \citep{liu2019roberta}, one on
-TinyLlama \citep{zhang2024tinyllama}, a synthetic noise diagnostic, IMDB, and
-the original's seven MTEB tasks; \citet{mantri2026glot} report ten GLUE tasks on
+BERT-base \citep{devlin2019bert}, four on RoBERTa \citep{liu2019roberta}, three
+on TinyLlama \citep{zhang2024tinyllama}, a four-arm reduced design on SST-2, a
+synthetic noise diagnostic, IMDB, and the original's seven MTEB tasks on both
+encoders; \citet{mantri2026glot} report ten GLUE tasks on
 six backbones. The four we chose are the four \emph{smallest}, and not by
 accident: our design costs $495$ runs per task
 (Appendix~\ref{app:limitations}).
@@ -543,22 +433,23 @@ where \textsc{Glot} itself sits among sentence poolers.
 \section{Conclusion}
 
 Hyperbolic substitutions in graph-based pooling have conditional effects. Their
-sign changes with the stage, task, backbone and training regime, by margins up
-to $+10.5$ Spearman and $-15.5$ max-AP. A descriptive tally of individually
-resolved comparisons is heterogeneous and is not evidence that geometry has a
-single direction of effect. The useful question is which experimental regime
+sign changes with the stage, task, backbone, training regime and dataset size,
+by margins up to $+17.1$ Spearman and $-15.5$ max-AP. A descriptive tally of
+individually resolved comparisons is heterogeneous and is not evidence that
+geometry has a single direction of effect. The useful question is which regime
 produces which effect, not whether curvature works in general.
 
 Stage B, the gyro-midpoint readout, is reliably harmful under supervised
-fine-tuning --- negative in every setting with the power to measure it, $0$ or
-$1$ of $15$ seeds positive on STS-B, surviving Bonferroni on two encoders, with
-a variance signature that suggests why --- and yet, trained contrastively and
-evaluated zero-shot, it produces the two largest effects in this paper in
-opposite directions. Stage C's prior apparent CoLA effect is confounded by a
-self-loop asymmetry and awaits a new matched factorial. Stage A separates from
-the baseline on CoLA at $50$ seeds and nowhere else. The \texttt{no graph}
-control is essential context: it tests graph contribution relative to the
-learned projection and readout, not against bag-of-token poolers.
+fine-tuning on small tasks --- negative in every setting with the power to
+measure it, surviving Bonferroni on two encoders and a decoder, costing $10.3$
+MCC on the decoder's CoLA, with a variance signature that suggests why. Both
+boundaries of that claim turned out to matter: at $67{,}349$ training examples
+the harm disappears, and trained contrastively and evaluated zero-shot the same
+readout appears in the arms producing the largest positive effects we measured.
+Stage C's apparent CoLA gain survives a matched factorial at $65$ seeds but
+decomposes into configuration rather than curvature. Stage A separates from the
+baseline on CoLA at $50$ seeds and is significantly negative on six of seven
+RoBERTa retrieval tasks.
 
 Three lessons travel beyond this architecture. The standard reason to go
 hyperbolic --- a low measured $\delta$ --- is an artifact of norm outliers, so
@@ -582,12 +473,10 @@ measures how far a re-run of the same configuration at the same seed can move,
 and the answer is far enough to matter. One environment caveat belongs here
 rather than in a footnote: the manifold library that supplies the exponential
 and logarithmic maps for all three stages was not version-pinned for most of
-this project, and the machine that ran the Table~\ref{tab:absolute} extension
-uses a different release from the one that produced the BERT campaigns. No
-comparison in this paper crosses that boundary --- every paired test is within a
-single campaign on a single machine --- but a reproducer starting from our
-\texttt{requirements.txt}, which now pins it, may not land on the same absolute
-numbers.
+this project. No comparison in this paper crosses a machine or environment
+boundary --- every paired test is within a single campaign on a single machine
+--- but a reproducer starting from our \texttt{requirements.txt}, which now pins
+it, may not land on the same absolute numbers.
 
 \label{page:endprose}
 
@@ -740,9 +629,9 @@ larger budgets, and say so wherever they appear: the Stage A re-test on CoLA at
 $n=50$ (\S\ref{sec:stageA}) and the Stage C factorial at $n=65$
 (Appendix~\ref{app:factorial2x2}). Both were commissioned in advance to settle a
 specific question, not selected after the fact for looking better at a larger
-$n$. Everything in Tables~\ref{tab:absolute}, \ref{tab:verdict}
-and~\ref{tab:mteb3} is $n=15$; the diagnostics elsewhere in the appendix use
-fewer seeds and state their own $n$.
+$n$. Everything in Tables~\ref{tab:absolute}, \ref{tab:verdict},
+\ref{tab:mteb3}, \ref{tab:mteb3rob} and~\ref{tab:sst2} is $n=15$; the
+diagnostics elsewhere in the appendix use fewer seeds and state their own $n$.
 
 \paragraph{Matched budget.} Trials per arm are $40$ in the BERT wide campaigns
 and on RoBERTa, and $10$ on the decoder and in the earlier graph-only campaigns.
@@ -787,7 +676,8 @@ threshold for arms already in it --- which it has now done twice
 (Appendix~\ref{app:calib}, \S\ref{sec:stageB}). Minimum detectable effects at
 $n=15$, from the median paired standard error actually observed, are $0.225$
 (BERT STS-B), $1.153$ (BERT CoLA), $0.317$ (MRPC), $2.064$ (RTE), $1.000$
-(RoBERTa CoLA), $0.243$ (RoBERTa STS-B) and $0.503$ (TinyLlama). RTE's figure
+(RoBERTa CoLA), $0.243$ (RoBERTa STS-B), $0.503$ (TinyLlama STS-B), $2.961$
+(TinyLlama CoLA) and $0.431$ (SST-2). RTE's figure
 exceeds every effect in this paper, so that task can only ever return a null; we
 report it, and draw nothing from it.
 
@@ -900,9 +790,14 @@ in Table~\ref{tab:factorial} originally took two cells from the wide campaign
 and ran only the two off-diagonal ones. Substituting a re-run of the shared cell
 moved the geometry component of Stage C's gain from $+0.40$ to $+0.07$; the
 $65$-seed job, which runs all four cells through one script, one code path and
-one cache state, puts it at $+0.534$ (Table~\ref{tab:decomp}). The three
+one cache state, puts it at $+0.502$ (Table~\ref{tab:decomp}). The three
 numbers span an order of magnitude and differ only in how the shared cell was
-obtained, which is the whole argument for never splicing.
+obtained, which is the whole argument for never splicing. The one place we were
+able to check the size of the error directly --- the decoder's STS-B B and C
+arms, rerun in a matched campaign --- the splice turned out to be accurate to two
+decimals (Appendix~\ref{app:decoder}). That is consistent rather than
+contradictory: the run-to-run term dominates on CoLA and is small on STS-B, so
+splicing fails exactly where the pairing analysis above says it should.
 
 \section{Selected hyper-parameters}
 \label{app:hp}
@@ -1037,11 +932,11 @@ bold. \texttt{no graph} deletes the token graph entirely and is an ablation of
 \textsc{Glot} itself, not one of our stages; \texttt{published} $\tau$ and
 \texttt{quantile} $\tau$ are RoBERTa threshold-calibration arms
 (Appendix~\ref{app:calib}). Every number is a confirmation mean, never a tuning
-maximum. A dash is a cell we do not intend to run; \PEND{} is a cell we do.
-$\S$ marks the two decoder arms that were run as a separate campaign four days
-after the rest of that column (Appendix~\ref{app:decoder}). Their scores are
-sound in isolation, but the bold ``best in column'' for the decoder is decided
-across that boundary, so read it as indicative only.}
+maximum. A dash is a cell we do not intend to run (Appendix~\ref{app:limitations}).
+The decoder's B and C on STS-B come from a second campaign that re-ran its own
+baseline at the same $15$ seeds ($79.94 \pm 0.52$, against the main campaign's
+$79.95 \pm 0.49$); their deltas in Table~\ref{tab:verdict} are taken within that
+campaign (Appendix~\ref{app:decoder}).}
 \label{tab:absolute}
 \begin{center}
 \footnotesize
@@ -1076,15 +971,15 @@ Backbone & Method & CoLA & STS-B & MRPC & RTE \\
  & quantile $\tau$          & 53.19\,$\pm$1.59 & 83.73\,$\pm$0.29 & --- & --- \\
 \midrule
 \multirow{9}{*}{TinyLlama-1.1B}
- & \textsc{Glot} (baseline) & \PEND & 79.95\,$\pm$0.49 & --- & 52.88\,$\pm$2.92 \\
- & A                        & \PEND & 79.99\,$\pm$0.51 & --- & 54.42\,$\pm$2.29 \\
- & B                        & \PEND & 78.78$^{\S}$\,$\pm$1.05 & --- & 55.86\,$\pm$2.88 \\
- & C                        & \PEND & \textbf{80.24}$^{\S}$\,$\pm$0.51 & --- & 52.49\,$\pm$2.56 \\
- & AB                       & \PEND & 76.39\,$\pm$1.87 & --- & 54.87\,$\pm$3.00 \\
- & AC                       & \PEND & 80.15\,$\pm$0.54 & --- & 57.21\,$\pm$1.57 \\
- & BC                       & \PEND & 78.78\,$\pm$0.95 & --- & \textbf{57.21}\,$\pm$1.70 \\
- & ABC                      & \PEND & 75.44\,$\pm$3.58 & --- & 55.43\,$\pm$2.96 \\
- & \texttt{no graph}        & \PEND & 79.95\,$\pm$0.48 & --- & 52.44\,$\pm$2.89 \\
+ & \textsc{Glot} (baseline) & 42.28\,$\pm$3.59 & 79.95\,$\pm$0.49 & --- & 52.88\,$\pm$2.92 \\
+ & A                        & 43.41\,$\pm$1.84 & 79.99\,$\pm$0.51 & --- & 54.42\,$\pm$2.29 \\
+ & B                        & 32.02\,$\pm$6.06 & 78.78\,$\pm$1.03 & --- & 55.86\,$\pm$2.88 \\
+ & C                        & 39.32\,$\pm$2.37 & \textbf{80.24}\,$\pm$0.52 & --- & 52.49\,$\pm$2.56 \\
+ & AB                       & 28.71\,$\pm$12.30 & 76.39\,$\pm$1.87 & --- & 54.87\,$\pm$3.00 \\
+ & AC                       & 44.71\,$\pm$2.88 & 80.15\,$\pm$0.54 & --- & 57.21\,$\pm$1.57 \\
+ & BC                       & 41.23\,$\pm$2.79 & 78.78\,$\pm$0.95 & --- & \textbf{57.21}\,$\pm$1.70 \\
+ & ABC                      & 37.50\,$\pm$3.85 & 75.44\,$\pm$3.58 & --- & 55.43\,$\pm$2.96 \\
+ & \texttt{no graph}        & \textbf{44.86}\,$\pm$2.18 & 79.95\,$\pm$0.48 & --- & 52.44\,$\pm$2.89 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1103,22 +998,19 @@ what a table of noise looks like.
 $\dagger$ significant on both the paired $t$-test and the exact sign test;
 $\ddagger$ additionally surviving that campaign's Bonferroni correction
 ($\alpha=0.0063$ on BERT, $0.005$ on the RoBERTa CoLA/STS-B campaign,
-$0.00625$ on the RoBERTa RTE and RoBERTa MRPC campaigns, on the decoder STS-B
-campaign and on the decoder RTE campaign).
-$\S$ \emph{the arm and the baseline it is differenced against were run in
-different campaigns}, which Appendix~\ref{app:determinism} shows is not a safe
-substitute for a within-campaign pair; the two decoder cells so marked have no
-baseline in their own campaign, and no arm is shared between the two decoder
-campaigns, so the drift between them cannot be estimated
-(Appendix~\ref{app:decoder}). Read those two as absolute scores in
-Table~\ref{tab:absolute}, not as tested differences.
+$0.00625$ on the RoBERTa RTE and RoBERTa MRPC campaigns and on the three
+decoder campaigns). Every delta is paired within a single campaign; the
+decoder's B and C on STS-B use the matched campaign's own baseline
+(Appendix~\ref{app:decoder}).
 \emph{No \textsc{Bert} RTE entry is significant and none could be}: that task has
 $277$ evaluation examples and a minimum detectable effect of $2.06$ accuracy
 points, larger than any effect in the BERT block. RoBERTa RTE has the same
 evaluation set and a similar minimum detectable effect ($1.99$), but two of its
 arms produce effects large enough to clear it. So does the decoder's RTE column
 ($2.04$), where four arms clear it --- but that column's baseline is at chance,
-which changes what its gains mean (Appendix~\ref{app:chance}).}
+which changes what its gains mean (Appendix~\ref{app:chance}). The decoder's
+CoLA column has a minimum detectable effect of $2.96$, the largest of the three
+decoder columns, so only the two arms exceeding $10$ MCC resolve there.}
 \label{tab:verdict}
 \begin{center}
 \footnotesize
@@ -1150,14 +1042,14 @@ Backbone & Method & CoLA & STS-B & MRPC & RTE \\
  & quantile $\tau$ & $-1.41^{\dagger}$ (2/13) & $-0.15$ (5/10) & --- & --- \\
 \midrule
 \multirow{8}{*}{TinyLlama-1.1B}
- & A   & \PEND & $+0.04$ (9/6) & --- & $+1.54$ (10/5) \\
- & B   & \PEND & $-1.16^{\dagger\S}$ (2/13) & --- & $+2.99$ (11/4) \\
- & C   & \PEND & $+0.29^{\S}$ (10/5) & --- & $-0.38$ (8/7) \\
- & AB  & \PEND & $-3.56^{\ddagger}$ (0/15) & --- & $+2.00$ (11/4) \\
- & AC  & \PEND & $+0.21$ (10/5) & --- & $+4.33^{\dagger}$ (13/2) \\
- & BC  & \PEND & $-1.17^{\ddagger}$ (1/14) & --- & $\mathbf{+4.33}^{\ddagger}$ (14/1) \\
- & ABC & \PEND & $-4.51^{\ddagger}$ (0/15) & --- & $+2.55$ (11/4) \\
- & \texttt{no graph} & \PEND & $+0.00$ (8/7) & --- & $-0.43$ (5/10) \\
+ & A   & $+1.13$ (9/6) & $+0.04$ (9/6) & --- & $+1.54$ (10/5) \\
+ & B   & $\mathbf{-10.26}^{\ddagger}$ (0/15) & $-1.16^{\dagger}$ (2/13) & --- & $+2.99$ (11/4) \\
+ & C   & $-2.96^{\dagger}$ (3/12) & $+0.30$ (10/5) & --- & $-0.38$ (8/7) \\
+ & AB  & $\mathbf{-13.58}^{\ddagger}$ (0/15) & $-3.56^{\ddagger}$ (0/15) & --- & $+2.00$ (11/4) \\
+ & AC  & $+2.43$ (9/6) & $+0.21$ (10/5) & --- & $+4.33^{\dagger}$ (13/2) \\
+ & BC  & $-1.06$ (5/10) & $-1.17^{\ddagger}$ (1/14) & --- & $\mathbf{+4.33}^{\ddagger}$ (14/1) \\
+ & ABC & $-4.78$ (4/11) & $-4.51^{\ddagger}$ (0/15) & --- & $+2.55$ (11/4) \\
+ & \texttt{no graph} & $+2.58$ (10/5) & $+0.00$ (8/7) & --- & $-0.43$ (5/10) \\
 \midrule
 \multicolumn{6}{l}{\emph{On BERT, every arm containing B is negative on CoLA,
 STS-B and MRPC. All four are positive on RTE, none significantly.}} \\
@@ -1190,34 +1082,40 @@ $t=-3.26$, sign $p=0.0352$ --- significant on both tests uncorrected, not after
 Bonferroni; no other arm reaches $0.07$ F1. TinyLlama RTE: BC $\bar{d}=+4.333$,
 $t=4.57$, sign $p=0.0010$, the only entry in that column to survive Bonferroni;
 AC $+4.332$, $t=4.91$, sign $p=0.0074$; B $+2.985$, $t=2.68$, sign $p=0.0574$;
-ABC $+2.553$, $t=2.85$, sign $p=0.119$. Every arm in these tables has exactly
+ABC $+2.553$, $t=2.85$, sign $p=0.119$. TinyLlama CoLA: B $\bar{d}=-10.26$,
+$t=-5.14$, sign $p=1\times10^{-4}$; AB $-13.58$, $t=-4.27$, sign
+$p=1\times10^{-4}$ --- both survive Bonferroni and are the two largest effects
+in any of our fine-tuning tables; C $-2.96$, $t=-2.40$, sign $p=0.0352$,
+significant on both tests uncorrected only; ABC $-4.78$, $t=-3.24$, sign
+$p=0.119$, which the $t$-test resolves and the sign test does not, so we do not
+count it. TinyLlama STS-B, matched campaign: B $\bar{d}=-1.16$, $t=-3.53$, sign
+$p=0.0074$, significant on both tests but above $\alpha=0.00625$; C $+0.30$,
+$t=1.57$, sign $p=0.302$. Every arm in these tables has exactly
 $15$ seeds; shard files and merged campaign files contain the same rows, so the
 analysis de-duplicates by run key before testing.
 
 \paragraph{The tally, by direction.} Counting every cell in this paper that
 passes \emph{both} the paired $t$-test and the exact sign test, hyperbolic arms
-are significantly better than their own baseline in $9$ settings and
-significantly worse in $25$; $5$ of the $9$ and $16$ of the $25$ also survive
-their family's Bonferroni correction. The MTEB block supplies most of both
-counts and was recomputed for this revision at the tightened
-$\alpha=0.00143$: it contributes $5$ positives (A on EmotionClassification
-$+0.27$; B on STS12 $+10.46$ and SciFact $+3.86$; ABC on STS12 $+10.30$ and
-SciFact $+5.57$) and $11$ negatives, of which $4$ and $5$ respectively survive
-correction. Outside MTEB the positives are BC and AC on decoder RTE (both
-$+4.33$), C on BERT CoLA ($+1.42$) and A on BERT CoLA at $n{=}50$ ($+0.83$).
+are significantly better than their own baseline in $19$ settings and
+significantly worse in $48$; $16$ of the $19$ and $32$ of the $48$ also survive
+their family's Bonferroni correction. MTEB supplies most of both counts, at
+$\alpha=0.00143$: the BERT block contributes $5$ positives and $11$ negatives
+($4$ and $5$ surviving), the RoBERTa block $10$ positives and $19$ negatives
+($10$ and $14$ surviving). Outside MTEB the four positives are BC and AC on
+decoder RTE (both $+4.33$), C on BERT CoLA ($+1.42$) and A on BERT CoLA at
+$n{=}50$ ($+0.83$), of which the first and last survive correction.
 \emph{We report this tally as a description of where effects were resolvable,
 not as evidence that curvature has a direction}: the counts are dominated by
 one benchmark and one stage, and a raw win/loss ratio over non-independent,
 differently powered settings is not a meaningful summary statistic. Three
 things are worth reading off it. Every one of the three stages appears among
-the positives, so no stage is inert. The two largest effects in the paper, in
-either direction, both come from Stage B in the same regime. And Stage A is
-the only stage that never appears on the negative side --- B, C, AC, BC and ABC
-are each significant in \emph{both} directions somewhere. The decoder RTE
-entries carry the chance-baseline caveat of Appendix~\ref{app:chance}; the two
-spliced decoder STS-B cells are excluded from both counts; and the BERT CoLA
-Stage C entry carries the control-parity caveat of
-Appendix~\ref{app:defects}.
+the positives, so no stage is inert. Every one also appears among the negatives:
+Stage A, which was clean in the previous revision, is significantly negative on
+six of seven RoBERTa retrieval tasks. And the largest effects in either
+direction all come from arms containing Stage B, in the same regime. The decoder
+RTE entries carry the chance-baseline caveat of Appendix~\ref{app:chance}, and
+the RoBERTa MTEB entries the degenerate-baseline caveat of
+Appendix~\ref{app:mteb3}.
 
 \subsection{Decomposing Stage C}
 \label{app:factorial2x2}
@@ -1226,17 +1124,18 @@ Stage C's selected configuration differed from the baseline's in two ways at
 once: a $3.6\times$ denser graph ($q=0.38$ against $0.10$) and a smaller network
 ($2$ layers of width $128$ against $4$ of $256$). We therefore ran the
 $2\times2$ that crosses \emph{message-passing geometry} with
-\emph{graph-and-architecture configuration}. The earlier revision ran it at
-$n=15$ with one cell spliced in from another campaign; this one runs all four
-cells through a single script at $n=65$, the size our own power calculation said
-was needed to resolve the interaction. The hyperbolic cells use C's own tuned
-curvature settings ($c = 4.0$, HGAT, input clip $0.7$), which is the choice most
-favourable to C.
+\emph{graph-and-architecture configuration}. The version reported here is the
+third and last: all four cells run through a single script at $n=65$,
+\emph{after} both control-parity defects of Appendix~\ref{app:defects} were
+closed and verified by a forward-pass test. The hyperbolic cells use C's own
+tuned curvature settings ($c = 4.0$, HGAT, input clip $0.7$), which is the
+choice most favourable to C.
 
 \begin{table}[h]
 \caption{Density $\times$ curvature factorial, CoLA MCC, mean $\pm$ sd over
-$65$ seeds. All four cells were run by the factorial script itself, in one
-campaign, on one cache state --- no cell is borrowed from another campaign.}
+$65$ seeds, with control parity closed. All four cells were run by the
+factorial script itself, in one campaign, on one cache state --- no cell is
+borrowed from another campaign.}
 \label{tab:factorial}
 \begin{center}
 \small
@@ -1244,18 +1143,19 @@ campaign, on one cache state --- no cell is borrowed from another campaign.}
 \toprule
  & Euclidean MP & hyperbolic MP \\
 \midrule
-base config ($q{=}0.10$, $K{=}4$, $h{=}256$) & 45.16\,$\pm$2.04 & 45.69\,$\pm$1.45 \\
-C config ($q{=}0.38$, $K{=}2$, $h{=}128$)    & 46.04\,$\pm$1.94 & \textbf{46.84}\,$\pm$1.19 \\
+base config ($q{=}0.10$, $K{=}4$, $h{=}256$) & 44.76\,$\pm$1.90 & 45.26\,$\pm$1.77 \\
+C config ($q{=}0.38$, $K{=}2$, $h{=}128$)    & 45.89\,$\pm$1.53 & \textbf{46.62}\,$\pm$1.45 \\
 \bottomrule
 \end{tabular}
 \end{center}
 \end{table}
 
 \begin{table}[h]
-\caption{Decomposition of Stage C's CoLA gain, paired over $65$ seeds. The three
-components sum exactly to the total. The total is significant on both tests by a
-wide margin; \emph{no component is}, and the largest of them is the
-configuration rather than the curvature.}
+\caption{Decomposition of Stage C's CoLA gain, paired over $65$ seeds with
+control parity closed. The three components sum exactly to the total. The total
+is significant on both tests by a wide margin; the curvature term is not
+significant on either, and the configuration it was confounded with is more
+than twice its size.}
 \label{tab:decomp}
 \begin{center}
 \small
@@ -1263,12 +1163,12 @@ configuration rather than the curvature.}
 \toprule
 Component & $\Delta$ & sd & $t$ & sign $p$ & p/n \\
 \midrule
-geometry alone (at base config)    & $+0.534$ & 2.60 & $1.65$ & $0.457$ & 36/29 \\
-configuration alone (Euclidean MP) & $+0.880$ & 3.00 & $2.36$ & $0.082$ & 40/25 \\
-interaction                        & $+0.271$ & 3.50 & $0.62$ & $0.620$ & 35/30 \\
+geometry alone (at base config)    & $+0.502$ & 2.79 & $1.45$ & $0.136$ & 39/26 \\
+configuration alone (Euclidean MP) & $+1.136$ & 2.37 & $3.87$ & $0.0026$ & 45/20 \\
+interaction                        & $+0.224$ & 3.57 & $0.51$ & $1.000$ & 33/32 \\
 \midrule
 \textbf{total} (C config, hyp.\ $-$ base config, Eucl.)
-                                   & $\mathbf{+1.685}$ & 2.30 & $\mathbf{5.91}$ & $\mathbf{1{\times}10^{-8}}$ & \textbf{55/10} \\
+                                   & $\mathbf{+1.862}$ & 2.31 & $\mathbf{6.51}$ & $\mathbf{<10^{-8}}$ & \textbf{51/14} \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1278,10 +1178,7 @@ interaction                        & $+0.271$ & 3.50 & $0.62$ & $0.620$ & 35/30 
 \caption{Adding Stage C on top of Stage B, across every setting where both
 arms were run. Paired differences against each backbone's own baseline, from
 Table~\ref{tab:verdict}. The sign of the change is not stable across task or
-backbone, and the last row is the only setting in which B alone is positive.
-$\S$ marks the decoder STS-B row, whose two arms come from different
-campaigns (Appendix~\ref{app:decoder}) and which is therefore the weakest of
-the seven.}
+backbone.}
 \label{tab:bxc}
 \begin{center}
 \small
@@ -1295,7 +1192,8 @@ BERT CoLA       & $-1.26$ & $+0.22$ & rescues \\
 RoBERTa CoLA    & $-0.37$ & $-2.16$ & much worse \\
 RoBERTa MRPC    & $-0.12$ & $+0.01$ & both below the MDE \\
 TinyLlama RTE   & $+2.99$ & $+4.33$ & improves an already-positive B \\
-TinyLlama STS-B$^{\S}$ & $-1.16$ & $-1.17$ & no effect \\
+TinyLlama STS-B & $-1.16$ & $-1.17$ & no effect \\
+TinyLlama CoLA  & $-10.26$ & $-1.06$ & rescues almost entirely \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1303,21 +1201,32 @@ TinyLlama STS-B$^{\S}$ & $-1.16$ & $-1.17$ & no effect \\
 
 Each component differences two independently trained cells, so it inherits both
 their variances; that is why the parts remain noisier than the whole even at
-$n=65$. Three comparisons with the $n=15$ version are worth making explicitly.
-The total grew from $+1.08$ to $+1.69$ and went from $t=2.18$ to $t=5.91$. The
-geometry term moved from $+0.07$ to $+0.534$ but is still not significant
-($t=1.65$, sign $p=0.457$). And the interaction, estimated at $+1.362$ from $15$
-seeds and the reason this run was commissioned, is $+0.271$ with $35/30$ seeds
-positive --- consistent with zero.
+$n=65$. Three things are worth stating explicitly.
 
-That last point is the substantive one, and it cuts against us. We sized a run
-to detect an interaction, and the interaction was an artifact of the sample size
-that suggested it. The same arithmetic that made $65$ seeds the right budget at
-$\Delta=1.36$ makes them nowhere near enough at $\Delta=0.27$: detecting a term
-that small against $\mathrm{sd}=3.50$ at $80\%$ power would take roughly
-$1{,}300$ seeds, which is about $50$ GPU-days for this one contrast. We do not
-propose to run it, and we do not claim the interaction is zero --- only that it
-is not resolvable at any budget this project can reach.
+\paragraph{Closing the parity defects did not change the answer.} The same
+factorial run before the fixes put the geometry term at $+0.534$; with both
+closed it is $+0.502$, a move of $0.032$ MCC. The defects were real and had to
+be repaired before any geometry contrast was admissible, but they were not what
+made Stage C look good. We report this because the opposite outcome --- a
+confound that, once removed, dissolves the effect --- is the one readers expect,
+and it is not what happened.
+
+\paragraph{The curvature term is the smaller of the two main effects, and it is
+not resolvable.} Geometry is $+0.502$ with $39/26$ seeds ($t=1.45$, sign
+$p=0.136$): significant on neither test. Configuration is $+1.136$, significant
+on both. So the arm-level advantage Stage C shows on CoLA is real --- the total
+is $+1.862$ at $51/14$ --- but it is mostly the denser graph and smaller network
+its search happened to select, not the manifold.
+
+\paragraph{The interaction was an artifact of the sample size that suggested
+it.} Estimated at $+1.362$ from $15$ seeds, which is why this run was
+commissioned, it is $+0.224$ at $65$ with $33/32$ seeds positive. The same
+arithmetic that made $65$ seeds the right budget at $\Delta=1.36$ makes them
+nowhere near enough at $\Delta=0.22$: detecting a term that small against
+$\mathrm{sd}=3.57$ at $80\%$ power would take roughly $2{,}000$ seeds, about
+$75$ GPU-days for this one contrast. We do not propose to run it, and we do not
+claim the interaction is zero --- only that it is not resolvable at any budget
+this project can reach.
 
 \section{Porting to other backbones}
 \label{app:calib}
@@ -1463,55 +1372,68 @@ because a run here costs about four times as much; it is identical across the
 arms in this campaign, which is what the paired tests require, but it does mean
 these arms were selected from a coarser search than their BERT counterparts.
 Backbone chosen over SmolLM2 on measured graph density
-(Table~\ref{tab:density}). Minimum detectable effect $0.503$. The absolute
+(Table~\ref{tab:density}). Minimum detectable effect $0.503$ on STS-B, $0.556$
+in the matched campaign below and $2.961$ on CoLA. The absolute
 scores are in Table~\ref{tab:absolute} and the deltas in
 Table~\ref{tab:verdict}; the ordering matches BERT, and the standard deviation
 grows in step with the number of hyperbolic parts
 ($0.49 \rightarrow 0.95 \rightarrow 1.87 \rightarrow 3.58$).
 
-\paragraph{B and C alone have now been run --- as a separate campaign, which
-limits what they can be compared to.} They were dropped from the original sweep
-for cost, and their absence was the reason the previous revision could not claim
-a decoder replication of Stage B in isolation. Both landed on $31$ August, at
-the same $10$ trials and the same $15$ confirmation seeds: B alone
-$78.78 \pm 1.05$, C alone $80.24 \pm 0.51$, against the original campaign's
-baseline of $79.95 \pm 0.49$. C alone is the highest absolute score of the nine
-arms in that column.
+\paragraph{B and C alone were rerun in a matched campaign, and it reproduced
+the splice.} Both arms were dropped from the original sweep for cost. They were
+first run into their own results file four days later --- a file containing no
+baseline, so any delta for them subtracted a cell from a different campaign,
+the practice Appendix~\ref{app:determinism} shows is unsafe. Rather than test
+that difference we reran the contrast properly: baseline, B and C, $15$ shared
+seeds, one campaign, one cache state.
 
-They were run into their own results file, four days after the six-arm campaign,
-and \emph{that file contains no baseline}. Any delta for B or C therefore
-subtracts a cell from a different campaign. We report the two arms as absolute
-scores here and in Table~\ref{tab:absolute}, and mark their
-Table~\ref{tab:verdict} entries $\S$ rather than deleting them, because the
-direction is informative even when the test is not admissible. Two details make
-this worse than the factorial splice that taught us the rule: no arm was run in
-both decoder campaigns, so the drift between them cannot be estimated even in
-principle; and the arms were selected by their own tuning stage inside the new
-campaign, so selection and drift are confounded. The repair is fifteen baseline
-seeds inside the B/C campaign, about four GPU-hours.
+The matched campaign gives baseline $79.94 \pm 0.52$, B $78.78 \pm 1.03$ and
+C $80.24 \pm 0.52$. All three reproduce the spliced values to two decimals
+(the original campaign's baseline was $79.95 \pm 0.49$). \emph{The splice was
+accurate, and refusing to rely on it still cost us nothing.} This is what
+Appendix~\ref{app:determinism} predicts: pairing halves the variance on STS-B
+and is worse than useless on CoLA, so STS-B is exactly where cross-campaign
+differencing survives. It does not generalise --- the CoLA factorial moved the
+same contrast from $+0.40$ to $+0.07$ to $+0.53$ depending on how the shared
+cell was obtained --- and we would make the same call again.
+
+B alone is therefore negative on the decoder with an admissible test:
+$\bar{d}=-1.16$, $t=-3.53$, sign $p=0.0074$, $2/13$ seeds. That is significant
+on both tests but above the $\alpha=0.00625$ we quote for this backbone. C alone
+is $+0.30$ ($10/5$) and not significant on either test.
+
+\paragraph{The decoder's CoLA column.} Nine arms, same $10$ trials and $15$
+confirmation seeds, minimum detectable effect $2.96$ --- the least sensitive
+of the three decoder columns, so only large effects resolve there. Two do, and
+they are the largest in any of our fine-tuning tables: B costs $10.26$ MCC and
+AB costs $13.58$, both $0/15$ and both Bonferroni-significant. Two of AB's
+fifteen seeds return $\mathrm{MCC}=0$ exactly --- the classifier predicts the
+majority class --- so part of that $13.58$ is outright training failure rather
+than degraded quality; excluding those two seeds AB is about $-9$. We keep them
+in the reported mean, because an arm that sometimes fails to train has told us
+something about itself. Stage C alone costs $2.96$ MCC here, significant on both
+tests uncorrected, which is the opposite sign to its BERT CoLA result.
 
 On the Bonferroni count, the strict reading of our own rule --- the correction is
 a property of a campaign --- leaves the original decoder campaign at six arms
-and $\alpha=0.0083$, with B and C forming a separate two-comparison family. We
-nevertheless quote the tighter $\alpha=0.00625$ that treats all eight as one
-family, because it is the conservative choice and because the arms do share a
-baseline in practice. Under either count the three arms that previously carried
-$\ddagger$ still survive, and B alone does not.
+and $\alpha=0.0083$, with the matched baseline/B/C campaign forming a separate
+two-comparison family. We nevertheless quote the tighter $\alpha=0.00625$ that
+treats all eight as one family, because it is the conservative choice and
+because the arms do share a baseline in practice. Under either count the three
+arms that previously carried $\ddagger$ still survive, and B alone does not.
 
-\TODO{The decoder CoLA campaign is running now and will be the first test of
-any stage on a decoder task other than STS-B. The decoder MRPC column is
-\emph{deliberately} not scheduled: MRPC resolves nothing on either encoder
-(whole nine-arm spread $0.37$ and $0.33$ F1 against a minimum detectable effect
-of $0.317$), so a third such column would buy a third null for about $22$
-GPU-hours, while the matched decoder STS-B campaign costs less and converts an
-inadmissible result into a testable one.}
+The decoder MRPC column is \emph{deliberately} not run. MRPC resolves nothing on
+either encoder --- its whole nine-arm spread is $0.37$ F1 on BERT and $0.33$ on
+RoBERTa against a minimum detectable effect of $0.317$ --- so a third such column
+would buy a third null for about $22$ GPU-hours. Those cells are dashes in
+Tables~\ref{tab:absolute} and~\ref{tab:verdict}.
 
 \section{The decoder's RTE baseline is at chance}
 \label{app:chance}
 
-The decoder RTE column contains the only B-containing arm in this paper that is
-significantly \emph{better} than its baseline, so it deserves a check the other
-columns do not need: is the baseline actually learning the task?
+The decoder RTE column contains the only B-containing arm in our fine-tuning
+tables that is significantly \emph{better} than its baseline, so it deserves a
+check the other columns do not need: is the baseline actually learning the task?
 
 RTE's development set has $277$ examples and a majority-class rate of
 $52.708\%$ ($146/277$). A model that always predicted the majority label would
@@ -1769,31 +1691,47 @@ tasks take about eight minutes) once the MS MARCO contrastive stage exists.
 \subsection{MTEB with a pooler that was actually trained}
 \label{app:mteb3}
 
-The corrected pipeline was relaunched on $31$ August as a full campaign: six
-arms $\times$ $15$ shared seeds $\times$ three backbones, on the original's
-\emph{Table 3} task list, every task name resolved against the installed
-\texttt{mteb} registry rather than guessed. \textbf{The BERT block is now
-complete: all six arms at $15$ seeds, $7$ tasks each.} The other two backbones
-are not. RoBERTa did not run at all: the queue passes \texttt{roberta-base}
-while the driver's model registry is keyed on \texttt{FacebookAI/roberta-base},
-so all $90$ of its runs were skipped in under a second with a warning and the
-queue moved on to the decoder. No compute was spent and nothing failed loudly
-enough to stop the queue --- a name mismatch that a row count, not a log, was
-needed to catch. It is the sixth entry in Appendix~\ref{app:defects} in spirit,
-except that this one is ours.
+The corrected pipeline was run as a full campaign: six arms $\times$ $15$ shared
+seeds, on the original's \emph{Table 3} task list, every task name resolved
+against the installed \texttt{mteb} registry rather than guessed. Both encoder
+blocks are complete --- BERT and RoBERTa, six arms at $15$ seeds, seven tasks
+each. The RoBERTa block cost us a day first: the queue passed
+\texttt{roberta-base} while the driver's model registry is keyed on
+\texttt{FacebookAI/roberta-base}, so all $90$ of its runs were skipped in under
+a second with a warning and the queue moved on. No compute was spent and nothing
+failed loudly enough to stop the queue --- a name mismatch that a row count, not
+a log, was needed to catch. It belongs with the defects of
+Appendix~\ref{app:defects}, except that this one is ours.
 
 The contrastive stage is worth a great deal on its own: on the two tasks common
 to both task lists, the baseline moves $30.02 \rightarrow 41.21$ on STS12 and
 $13.93 \rightarrow 19.72$ on SciFact. Table~\ref{tab:docmteb} was measuring
 random initialisation, as its caption says.
 
+\paragraph{We do not reproduce the published absolute numbers, and one cell is
+broken.} Our baseline sits below \citet{mantri2026glot}'s Table 3 on twelve of
+the fourteen encoder cells, and in every one of those twelve the published value
+is above our \emph{best} of $15$ seeds --- so the gap is systematic, not a draw
+from our seed distribution. It is $0.85$--$4.69$ points on BERT and
+$0.22$--$5.59$ on RoBERTa, except for RoBERTa SciFact, where we score $0.58$
+ndcg@$10$ against a published $26.05$ and no seed exceeds $1.03$. That last one
+is a defect rather than a shortfall --- BERT's SciFact reproduces to within the
+ordinary gap --- and we have not found its cause. The most likely explanation for
+the systematic part is the MS MARCO contrastive stage, the one component MTEB
+depends on and GLUE does not; our GLUE reproduction is sound
+(Appendix~\ref{app:repro}). \emph{No comparison in this appendix depends on the
+absolute level}: every delta is paired against our own baseline on the same
+seeds. But the two SciFact columns should be read as effects on a broken
+baseline, and we exclude them from the effect-size comparisons of
+\S\ref{sec:stageB}.
+
 \begin{table}[h]
 \caption{MTEB, the original's Table 3 task list, BERT-base, $15$ shared seeds,
 $\times100$. The pooler is contrastively trained on MS MARCO before each
 evaluation. The first column is the absolute baseline mean; the rest are paired
-differences against it on the same seeds. All six arms are complete at $15$
-seeds. $\dagger$ significant on both tests uncorrected, $\ddagger$ also after
-Bonferroni over the whole complete arm-by-task family for this backbone
+differences against it on the same seeds. $\dagger$ significant on both tests
+uncorrected, $\ddagger$ also after
+Bonferroni over the whole arm-by-task family for this backbone
 ($5$ arms $\times$ $7$ tasks $=35$ contrasts, $\alpha=0.00143$). The seven
 metrics are not
 commensurable --- accuracy, ndcg@$10$, v-measure, map@$1000$, cosine-Spearman,
@@ -1819,37 +1757,77 @@ SummEval (Spearman)            & 29.44 & $-0.05$ & $-1.22^{\dagger}$ & $+0.30$ &
 \end{center}
 \end{table}
 
+\begin{table}[h]
+\caption{MTEB, the original's Table 3 task list, RoBERTa-base, $15$ shared
+seeds, $\times100$, same protocol and same family-wise correction as
+Table~\ref{tab:mteb3}. The baseline column is not a faithful reproduction of
+the published numbers and SciFact in particular is degenerate; see the text.}
+\label{tab:mteb3rob}
+\begin{center}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccc}
+\toprule
+Task (metric) & baseline & A & B & C & AC & ABC \\
+\midrule
+EmotionClassification (acc.)   & 23.38 & $-2.40^{\ddagger}$ & $-0.51$ & $-1.85^{\ddagger}$ & $-2.35^{\ddagger}$ & $+5.89^{\ddagger}$ \\
+SciFact (ndcg@10)              & \phantom{0}0.58 & $-0.13$ & $+5.08^{\ddagger}$ & $-0.27^{\dagger}$ & $+0.34$ & $+7.32^{\ddagger}$ \\
+RedditClustering (v-meas.)     & 16.97 & $-2.89^{\ddagger}$ & $+4.29^{\ddagger}$ & $-2.52^{\ddagger}$ & $-2.88^{\ddagger}$ & $\mathbf{+10.35}^{\ddagger}$ \\
+AskUbuntuDupQuestions (map)    & 45.25 & $-0.50^{\dagger}$ & $+0.36$ & $-0.41^{\dagger}$ & $-1.14^{\ddagger}$ & $+2.06^{\ddagger}$ \\
+STS12 (Spearman)               & 28.97 & $-3.46^{\dagger}$ & $+12.80^{\ddagger}$ & $-4.72^{\dagger}$ & $-6.95^{\ddagger}$ & $\mathbf{+17.05}^{\ddagger}$ \\
+TwitterSemEval2015 (max-AP)    & 54.28 & $-3.58^{\ddagger}$ & $-6.13^{\ddagger}$ & $-2.38^{\ddagger}$ & $-5.77^{\ddagger}$ & $\mathbf{-10.79}^{\ddagger}$ \\
+SummEval (Spearman)            & 23.44 & $-3.27^{\ddagger}$ & $+4.68^{\ddagger}$ & $-0.71$ & $+0.13$ & $+2.13^{\ddagger}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
 \paragraph{This benchmark can resolve the effects at issue.} Baseline seed
 standard deviations are $0.28$--$1.50$, giving minimum detectable effects of
 $0.21$--$1.12$; five of the seven tasks are better powered than BERT CoLA
 ($1.153$) and all seven are far better powered than RTE ($2.064$). Unlike
 Table~\ref{tab:docmteb}, nothing here is excused by sample size.
 
-\paragraph{Two of our headline claims change shape here, and one of them
-badly.} Stage B, which is uniformly harmful on GLUE, is the \emph{largest
-effect in either direction} on MTEB: $+10.46$ Spearman on STS12 and $+3.86$
-ndcg on SciFact, both $15/15$ seeds positive, against $-15.54$ max-AP on
-TwitterSemEval2015 and $-3.04$ accuracy on EmotionClassification, both $0/15$.
-All four survive the corrected task-by-arm Bonferroni family. Stage A behaves
-as it does everywhere else: seven small positives, one of them ($+0.27$ on
-EmotionClassification) significant uncorrected, none after correction.
+\paragraph{Stage B reverses direction between the two encoders.} On BERT it is
+positive on two tasks and negative on four. On RoBERTa it is positive on four
+($+12.80$ on STS12, $+5.08$ on SciFact, $+4.68$ on SummEval, $+4.29$ on
+RedditClustering, all $15/15$) and negative on one ($-6.13$, $0/15$). The
+largest negative in the paper, $-15.54$ on BERT TwitterSemEval2015, does not
+replicate in magnitude: the same contrast on RoBERTa is $-6.13$. The largest
+positive does replicate and grows.
 
-\paragraph{ABC tracks B almost exactly, which says the readout dominates the
-stack.} With all six arms now complete, ABC reproduces B's pattern on every one
-of the seven tasks and on the same side of zero: $+10.30$ against B's $+10.46$
-on STS12, $-15.34$ against $-15.54$ on TwitterSemEval2015, $-3.36$ against
-$-3.04$ on EmotionClassification. On SciFact it goes \emph{further} than B,
-$+5.57$ against $+3.86$ --- the second-largest positive effect in this paper.
-So in this regime adding the hyperbolic graph and message passing on top of the
-hyperbolic readout barely moves the outcome: B sets the sign and roughly the
-magnitude, and A and C ride along. That is the opposite of the GLUE picture in
-\S\ref{sec:interaction}, where adding C to B changed the sign of the result in
-four of seven settings, and it is one more instance of the same lesson --- how
-the stages combine is a property of the regime, not of the operators.
+\paragraph{Stage A loses its clean record here.} Everywhere else in this paper
+Stage A is small and mostly positive. On RoBERTa retrieval it is negative on six
+of seven tasks, four of them at $0/15$ seeds surviving Bonferroni. Stage C is
+negative on six of seven and AC on five of seven. On this backbone the graph and
+the message passing both hurt, and only the readout helps.
 
-Stage C alone is nominally negative on five of the seven tasks and significantly
-negative on SciFact ($-1.95$, $2/13$) on both tests uncorrected, though not
-under the tightened $\alpha=0.00143$.
+\paragraph{ABC does not track B on RoBERTa, and this is the sharpest
+interaction we measured.} On BERT, ABC reproduces B's pattern on all seven tasks
+and on the same side of zero, so the readout sets the outcome and the graph and
+message passing ride along. On RoBERTa the same three stages compose
+differently: A alone, C alone and AC are all significantly negative, yet ABC is
+positive on six of seven tasks and \emph{larger than B alone on every one of
+them} --- $+17.05$ against $+12.80$ on STS12, $+10.35$ against $+4.29$ on
+RedditClustering, $+5.89$ against $-0.51$ on EmotionClassification. Stages that
+hurt in isolation help when stacked on the hyperbolic readout. We have no
+account of why. It is the same lesson as \S\ref{sec:interaction} in its
+strongest form: how the stages combine is a property of the regime, not of the
+operators.
+
+\paragraph{What the deltas do not say.} The RoBERTa gains are large partly
+because the RoBERTa baseline is poor. ABC's $+17.05$ takes STS12 from $28.97$ to
+$46.15$, which is still below our own BERT ABC ($51.51$) and below the published
+BERT \textsc{Glot} ($48.62$). The pattern is consistent with, though not proof
+of, the density story of Appendix~\ref{app:calib}: RoBERTa's cosine graph is
+$0.991$ dense, the Euclidean attention readout over a near-complete graph is
+weak, and the gyro-midpoint recovers part of what that costs --- while Stage A,
+which repairs density directly, makes it worse. We report the correlation and
+did not run the experiment that would establish the mechanism.
+
+Stage C alone is nominally negative on five of seven BERT tasks and
+significantly negative on SciFact ($-1.95$, $2/13$) on both tests uncorrected,
+though not under the tightened $\alpha=0.00143$.
 
 We do not read this as overturning the GLUE results --- the training regime is
 different in kind (contrastive on MS MARCO then zero-shot, against supervised
@@ -1898,12 +1876,10 @@ own arms.
       dense-to-sparse graph change and exactly $0$ for the same call twice. It
       is small, but it is real, and because it differs between the two
       hyperbolic cells it does not cancel in the ``geometry alone'' contrast of
-      Table~\ref{tab:decomp}.
-      \TODO{The layer is now fixed (\texttt{remove\_self\_loops} before
-      \texttt{add\_self\_loops}; \texttt{test\_edge\_parity.py} verifies $105$
-      against $105$ on the real graph), but the $65$-seed factorial was run
-      before the fix and therefore measured the \emph{uncorrected} layer at high
-      precision. The corrective factorial is queued rather than run.}
+      Table~\ref{tab:decomp}. The layer is now fixed
+      (\texttt{remove\_self\_loops} before \texttt{add\_self\_loops};
+      \texttt{test\_edge\_parity.py} verifies $105$ against $105$ on the real
+      graph) and Table~\ref{tab:decomp} is measured with the fix in place.
 \item \textbf{And the Euclidean control consumes an edge attribute the
       hyperbolic one ignores.} \texttt{HyperbolicGATConv} accepts
       \texttt{edge\_weight} and never uses it, while the Euclidean
@@ -1993,46 +1969,52 @@ in Tables~\ref{tab:verdict} and~\ref{tab:roberta}, every row of
 Table~\ref{tab:hp}, the re-measured densities of Table~\ref{tab:density}, the
 decoder block, the IMDB and MTEB values, and the learning-rate selection claims.
 
-\subsection*{What the runs of 31 August changed}
+\subsection*{What the later runs changed}
 
-Four queued jobs reported after the audit above. Each is recorded here because
-three of the four moved a claim.
+Nine queued jobs reported after the audit above, in two waves. Each is recorded
+here because most of them moved a claim, and several moved it against us.
 
 \begin{itemize}
 \itemsep1pt
-\item \textbf{The $65$-seed factorial replaced Tables~\ref{tab:factorial}
-      and~\ref{tab:decomp}}; Appendix~\ref{app:factorial2x2} carries the new
-      values. Against the $n=15$ version the geometry term went
-      $+0.066 \rightarrow +0.534$ and the configuration term
-      $-0.346 \rightarrow +0.880$, so the larger main effect is now the
-      configuration rather than the curvature, and the interaction the run was
-      commissioned to detect collapsed to a value consistent with zero. The
-      ``spliced'' column and the italic row are deleted, as the previous
-      revision instructed.
 \item \textbf{Stage A on CoLA at $n=50$ turned an unresolved trend into a
       positive} (\S\ref{sec:stageA}), which previously read ``neither a positive
       nor a null''. The $15$ seeds carried over from the wide campaign and the
-      $35$ newly run agree, and every pair is within one campaign, so no
-      comparison splices across campaigns.
-\item \textbf{The decoder's B and C arms filled four \PEND{} cells --- and then
-      failed our own admissibility rule.} They closed the gap the previous
-      revision flagged, which was that the paper claimed a decoder replication
-      of Stage B without having run B by itself there. But both arms were
-      written to their own results file, with no baseline in it, so their deltas
-      are cross-campaign splices --- the practice this appendix lists above as
-      the most consequential error of the previous revision, repeated by us one
-      revision later. Both entries are now marked $\S$ in
-      Table~\ref{tab:verdict}, the claim in \S\ref{sec:stageB} is stated as
-      corroboration rather than as a fifth significant result, and the full
-      account is in Appendix~\ref{app:decoder}.
-\item \textbf{The MTEB job failed on a path bug, not a pipeline fault.} The
-      previous revision recorded it as failing without writing a log and treated
-      that as evidence the pipeline had never run end to end. Both readings were
-      wrong: the log exists and holds one line --- a launcher invoking the driver
-      from the repository root, where the corrected copy does not live --- and a
-      smoke test had already trained the pooler on MS MARCO and scored STS13 at
-      $63.94$ against $59.57$ untrained. The campaign was relaunched on
-      31 August (Appendix~\ref{app:mteb3}).
+      $35$ newly run agree, and every pair is within one campaign.
+\item \textbf{Stage A then lost its clean record.} The RoBERTa MTEB block found
+      it significantly negative on six of seven retrieval tasks, four at $0/15$
+      seeds surviving Bonferroni. The previous revision asserted that Stage A
+      ``never appears on the negative side''; that is now false, and the tally
+      paragraph of Appendix~\ref{app:results} says so.
+\item \textbf{The corrective factorial closed Stage C's attribution.} The
+      $n{=}65$ factorial was first run with two control-parity defects open
+      (Appendix~\ref{app:defects}); rerunning all $260$ cells with both closed
+      moved the geometry term from $+0.534$ to $+0.502$ and left the conclusion
+      unchanged. Against the $n=15$ version the interaction the run was
+      commissioned to detect collapsed from $+1.362$ to $+0.224$.
+\item \textbf{The decoder's B and C arms were rerun in a matched campaign.}
+      Their first run wrote to a file containing no baseline, so their deltas
+      spliced two campaigns --- the practice this appendix lists above as the
+      most consequential error of the previous revision, repeated by us one
+      revision later. The matched rerun reproduced all three values to two
+      decimals, so the splice was accurate; we would still refuse to rely on it
+      (Appendix~\ref{app:decoder}).
+\item \textbf{The decoder's CoLA column produced the largest fine-tuning effects
+      in the paper}, $-10.26$ MCC for B and $-13.58$ for AB, and revealed that
+      two of AB's fifteen seeds fail to train at all.
+\item \textbf{SST-2 removed the small-data confound, against us.} The previous
+      revision listed it as an open threat to the paper's firmest result. It
+      was: at $67{,}349$ training examples Stage B is $+0.65$ accuracy rather
+      than negative, and every Stage B claim is now scoped to small tasks
+      (Appendix~\ref{app:sst2}).
+\item \textbf{The MTEB job had failed on a path bug, not a pipeline fault}, and
+      the relaunched RoBERTa block was then skipped entirely by a
+      model-name mismatch that spent no compute and stopped nothing
+      (Appendix~\ref{app:mteb3}). Both are our defects, not the original's.
+\item \textbf{We do not reproduce the published MTEB absolutes.} Checking the
+      completed blocks against \citet{mantri2026glot}'s Table 3 showed the
+      published value above our best of $15$ seeds on twelve of fourteen encoder
+      cells, and RoBERTa SciFact degenerate at $0.58$ against $26.05$. This was
+      not known when the BERT block was first written up.
 \item \textbf{Four cost figures were wrong and are corrected.} The uncovered
       GLUE tasks were quoted at $170$ hours for SST-2, $264$ for QNLI and $38$
       and $41$ \emph{days} for QQP and MNLI. Those scaled linearly from full
@@ -2042,49 +2024,112 @@ three of the four moved a claim.
       and the companion cache figure is $75$\,GB rather than $149$.
 \end{itemize}
 
+\section{Does Stage B's harm survive more data?}
+\label{app:sst2}
+
+Stage B hurts by amplifying seed variance, and variance is a quantity more data
+suppresses. Every task in Table~\ref{tab:absolute} has at most $8{,}551$
+training examples, so the negative could be a small-data artifact rather than a
+property of the readout. SST-2 is the cheapest task that separates the two: it
+has $67{,}349$ training examples, $7.9\times$ CoLA, and is \emph{not} one of the
+tasks the original caps at \texttt{train[:20000]}.
+
+\emph{This is a weaker design than the rest of the paper and we report it as
+one.} The four arms replay the configurations selected on CoLA rather than
+tuning on SST-2, so the comparison cannot rank arms. It can answer the one
+question it was built for --- whether B's harm persists at eight times the data
+--- because the reduction is applied identically to the baseline and to the
+treatment arms.
+
+\begin{table}[h]
+\caption{SST-2 accuracy, mean $\pm$ sd over the $15$ shared seeds, $\times100$,
+with paired differences against the baseline. Configurations are replayed from
+CoLA, so these numbers rank nothing; they are reported only against the
+small-data confound. No arm is significant on both tests.}
+\label{tab:sst2}
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Arm & mean & $\Delta$ & p/n & $t$ \\
+\midrule
+\textsc{Glot} (baseline) & 89.57\,$\pm$0.45 & \emph{ref} & --- & --- \\
+B  & \textbf{90.22}\,$\pm$0.66 & $+0.65$ & 10/5 & $2.98$ \\
+C  & 89.96\,$\pm$0.65 & $+0.39$ & \phantom{0}9/6 & $1.99$ \\
+BC & 89.83\,$\pm$0.60 & $+0.26$ & 10/5 & $1.29$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\textbf{The harm does not survive.} Stage B runs $-1.07$ on BERT STS-B, $-1.26$
+on RoBERTa STS-B, $-1.16$ on the decoder's STS-B and $-10.26$ on the decoder's
+CoLA. On SST-2 it is $+0.65$. That is resolved by the $t$-test and not by the
+sign test ($10/5$, $p=0.302$), so by our own both-tests rule it is a null, not a
+gain --- but it is emphatically not the negative the small tasks show, and the
+minimum detectable effect here is $0.431$, so the column is not merely
+underpowered.
+
+The mechanism moves in step. Stage B raises the seed standard deviation by
+$1.98\times$ on the decoder's STS-B and $1.69\times$ on the decoder's CoLA; here
+it is $1.47\times$, and BC's standard deviation ($0.60$) is barely above the
+baseline's ($0.45$) where on every small task adding B raised it sharply. The
+whole four-arm spread on SST-2 is $0.65$ accuracy points, against up to $13.58$
+MCC on the decoder's CoLA.
+
+We therefore scope every Stage B claim in this paper to supervised fine-tuning
+on \emph{small} target tasks. What we cannot say is where the boundary lies: we
+have one task above $8{,}551$ examples and one below, which locates the
+transition somewhere in an order of magnitude and no more precisely.
+
 \section{Limitations}
 \label{app:limitations}
 
 \begin{itemize}
 \itemsep1pt
 \item \textbf{Stage C's gain is real but not attributable to geometry.} The
-      $2\times2$ at $n=65$ (Appendix~\ref{app:factorial2x2}) splits the gain
-      into geometry, configuration and interaction. The total is significant on
-      both tests; \emph{no component is}, and the configuration term is the
-      larger of the two main effects. Resolving the interaction at its observed
-      size would need roughly $1{,}300$ seeds, which we will not run.
-\item \textbf{Stage B's harm is regime-specific, and we found that out late.}
-      The same readout that is reliably harmful under fine-tuning produces the
-      two largest effects in this paper, in opposite directions, under
-      contrastive training with zero-shot evaluation
-      (Appendix~\ref{app:mteb3}). We have no account of which task property
-      predicts the sign, and with seven tasks we cannot get one. Every Stage B
-      statement here is scoped to supervised fine-tuning on the target task.
-\item \textbf{The decoder's B and C arms cannot be tested against the decoder
-      baseline} (Appendix~\ref{app:decoder}). Their absolute scores are sound;
-      their differences splice two campaigns, and with no arm shared between the
-      two the drift is unbounded rather than merely unmeasured. Fifteen baseline
-      seeds inside that campaign, about four GPU-hours, would fix it, and this
-      is the cheapest experiment the paper is missing.
+      matched $2\times2$ at $n=65$ (Appendix~\ref{app:factorial2x2}) splits the
+      gain into geometry, configuration and interaction. The total is
+      significant on both tests; the curvature term is not significant on
+      either, and the configuration term is more than twice its size.
+      Resolving the interaction at its observed size would need roughly
+      $2{,}000$ seeds, which we will not run.
+\item \textbf{Stage B's harm is bounded by regime and by scale, and we found
+      both out late.} The same readout that is reliably harmful under
+      fine-tuning on small tasks appears in the arms producing the largest
+      positive effects in this paper under contrastive training with zero-shot
+      evaluation
+      (Appendix~\ref{app:mteb3}), and is no longer distinguishable from the
+      baseline once the task has $67{,}349$ training examples
+      (Appendix~\ref{app:sst2}). We have no account of which task property
+      predicts the sign, and with seven retrieval tasks we cannot get one. Every
+      Stage B statement here is scoped to supervised fine-tuning on small
+      target tasks.
+\item \textbf{Our MTEB absolute numbers do not reproduce the original's, and
+      one cell is broken.} The published values exceed our best of $15$ seeds on
+      twelve of fourteen encoder cells, and RoBERTa SciFact scores $0.58$
+      against a published $26.05$. Every delta we report is paired within our
+      own campaign and so does not depend on the level, but the two SciFact
+      columns rest on a degenerate baseline and we exclude them from effect-size
+      comparisons (Appendix~\ref{app:mteb3}).
 \item \textbf{Stage A's positive is one task deep.} It separates on CoLA at
-      $n=50$ ($+0.83$, both tests) and in none of the other seven settings. We
-      have not tested whether it survives on a second task at the same seed
-      budget, and the cheapest such test has not been run.
+      $n=50$ ($+0.83$, both tests) and in none of the other ten fine-tuning
+      settings, and it is significantly negative on six of seven RoBERTa
+      retrieval tasks. We have not tested whether the CoLA positive survives on
+      a second task at the same seed budget.
 \item \textbf{A seed does not identify a run} (Appendix~\ref{app:determinism}).
       Within-campaign paired tests are unaffected, but pairing recovers much
       less variance than we claimed on CoLA, and no table may splice cells
       across campaigns. We did not discover this until the audit for this
       revision.
-\item \textbf{Our Stage C control differs from its treatment in two ways that
+\item \textbf{Our Stage C control differed from its treatment in two ways that
       are not curvature} (Appendix~\ref{app:defects}). The hyperbolic layers
-      duplicated self-loops, and the Euclidean GAT consumes an edge attribute
+      duplicated self-loops, and the Euclidean GAT consumed an edge attribute
       the hyperbolic GAT ignores --- which is not inert, because the attribute
       enters before a leaky ReLU. Together they are about $6\%$ of a
-      dense-to-sparse graph change, they differ between the two hyperbolic cells
-      of the factorial, and the $n{=}65$ factorial was run before either was
-      closed. Both are now fixed in code and verified by a forward-pass test,
-      but the corrective factorial has not been run, so the $+0.534$ geometry
-      term in Table~\ref{tab:decomp} still carries them.
+      dense-to-sparse graph change. Both are fixed, and the factorial of
+      Table~\ref{tab:decomp} was rerun with the fixes in place; the geometry
+      term moved by $0.032$ MCC.
 \item \textbf{We select the epoch on the split we report}, because GLUE test
       labels are not public. This is a smaller version of the practice we
       criticise in \S\ref{sec:choices}. Splitting the development set into
@@ -2102,18 +2147,14 @@ three of the four moved a claim.
       optimisation or curvature-aware initialisation. This is the strongest
       available objection to our Stage B negative, and we state it rather than
       merely acknowledging it.
-\item \textbf{Every task we ran is small, and that may explain Stage B.} CoLA,
-      STS-B, MRPC and RTE have $8{,}551$, $5{,}749$, $3{,}668$ and $2{,}490$
-      training examples, and Stage B hurts by amplifying seed variance --- which
-      more data suppresses. SST-2 has $67{,}349$, $7.9\times$ CoLA, and is the
-      cheapest task that can separate the two explanations. It is now queued:
-      four arms, confirmation seeds only, replaying the CoLA-selected
-      configurations. \emph{That is a weaker design and we will report it as
-      one}: because no arm is tuned on SST-2, it can say whether B's harm
-      persists at eight times the data but it cannot rank arms, so its numbers
-      belong here and not in Table~\ref{tab:absolute}. The reduction is applied
-      identically to the baseline and the treatment arms, which is the property
-      that makes the contrast fair. Until it lands the confound stands.
+\item \textbf{Every fine-tuning task in our main tables is small, and that is
+      most of why Stage B looks harmful.} CoLA, STS-B, MRPC and RTE have
+      $8{,}551$, $5{,}749$, $3{,}668$ and $2{,}490$ training examples. SST-2 has
+      $67{,}349$, and there Stage B is not distinguishable from the baseline
+      (Appendix~\ref{app:sst2}). That design is weaker than the others by
+      construction --- no arm is tuned on SST-2 --- so it can say whether the
+      harm persists at scale but cannot rank arms, which is why its numbers stay
+      in that appendix and out of Table~\ref{tab:absolute}.
 \item \textbf{\textsc{Bert} RTE is underpowered and contributes nothing.} Its
       minimum detectable effect of $2.06$ accuracy points exceeds every effect
       in that block, and no arm in it is significant. We include the column for

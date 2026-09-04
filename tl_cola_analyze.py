@@ -1,10 +1,11 @@
-"""TinyLlama CoLA: confirmation means and paired deltas vs baseline.
-Confirmation rows are the shared seeds 1..15; tuning rows use a held-out seed."""
-import csv, math
+"""Confirmation means and paired deltas vs baseline for a campaign CSV.
+Usage: python tl_cola_analyze.py [path.csv]
+Only rows with stage=confirm are used, de-duplicated by run_key."""
+import csv, math, sys
 from collections import defaultdict
 
-PATH = "results/campaign_t1_tl_cola.csv"
-ARMS = ["baseline", "A", "B", "C", "AB", "AC", "BC", "ABC", "no_graph"]
+PATH = sys.argv[1] if len(sys.argv) > 1 else "results/campaign_t1_tl_cola.csv"
+ORDER = ["baseline", "A", "B", "C", "AB", "AC", "BC", "ABC", "no_graph"]
 
 
 def sign_p(pos, n):
@@ -26,6 +27,9 @@ for r in conf:
     seen[r["run_key"]] = r
 for r in seen.values():
     score[(r["arm"], int(r["seed"]))] = float(r["score"])
+
+present = {a for a, _ in score}
+ARMS = [a for a in ORDER if a in present] + sorted(present - set(ORDER))
 
 print(f"\n{'arm':<10s}{'mean':>8s}{'sd':>7s}{'n':>4s}"
       f"{'delta':>9s}{'p/n':>8s}{'t':>8s}{'sign p':>9s}")
@@ -52,4 +56,5 @@ for a in ARMS:
                      f"{sign_p(pos, n):9.4f}")
     print(line)
 
-print("\nBonferroni for an 8-arm campaign: alpha = 0.05/8 = 0.00625")
+print("\nBonferroni: alpha = 0.05 / (number of arms tested against this "
+      "baseline within the campaign)")
